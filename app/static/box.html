@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Submit — Virtual Suggestion Box</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/theme.js"></script>
+</head>
+<body>
+
+<div class="card" id="card">
+  <p class="subtitle">Loading…</p>
+</div>
+
+<script>
+const slug = window.location.pathname.split('/').filter(Boolean).pop();
+const card = document.getElementById('card');
+let nomineeCount = 0;
+
+async function loadForm() {
+  let res;
+  try {
+    res = await fetch(`/api/vb/${slug}`);
+  } catch {
+    card.innerHTML = `<p class="error-msg visible">Couldn't reach the server. Try again shortly.</p>`;
+    return;
+  }
+  if (!res.ok) {
+    card.innerHTML = `<h1>Not found</h1><p class="subtitle">This link doesn't point to a valid form.</p>`;
+    return;
+  }
+  const form = await res.json();
+  document.body.setAttribute('data-kind', form.type === 'nomination' ? 'nomination' : 'suggestion');
+  renderForm(form);
+}
+
+function renderForm(form) {
+  const showSuggestion = form.type === 'suggestion' || form.type === 'both';
+  const showNomination = form.type === 'nomination' || form.type === 'both';
+  const isBoth = form.type === 'both';
+  const stampLabel = stampText(form.title);
+
+  card.innerHTML = `
+    <div class="stamp">${stampLabel}</div>
+    <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : (form.type === 'nomination' ? 'Employee recognition' : 'Idea box')}</p>
+    <h1>${escapeHtml(form.title)}</h1>
+    <p class="subtitle">${isBoth ? 'Leave a suggestion, nominate a coworker, or both.' : (form.type === 'nomination' ? "Recognize a coworker (or a few) who's earned it." : 'Tell us what would make things better.')}</p>
+
+    <form id="submit-form">
+      ${isBoth ? `
+        <div class="section-toggle">
+          <label class="toggle-option">
+            <input type="checkbox" id="toggle-suggestion">
+            <span>💡 I have a suggestion</span>
+          </label>
+          <label class="toggle-option">
+            <input type="checkbox" id="toggle-nomination">
+            <span>🏆 I want to nominate someone</span>
+          </label>
+        </div>
+      ` : ''}
+
+      <div class="panel ${isBoth ? 'hidden' : ''}" id="suggestion-panel" ${showSuggestion ? '' : 'style="display:none"'}>
+        ${showSuggestion ? `
+          <label for="suggestion_text">Your suggestion</label>
+          <textarea id="suggestion_text" placeholder="What's the idea?"></textarea>
+        ` : ''}
+      </div>
+
+      <div class="panel ${isBoth ? 'hidden' : ''}" id="nomination-panel" ${showNomination ? '' : 'style="display:none"'}>
+        ${showNomination ? `
+          <label>Who are you nominating? <span class="hint">— add as many as you like</span></label>
+          <div class="nominees-list" id="nominees-list"></div>
+          <button type="button" class="add-nominee-btn" id="add-nominee-btn">+ Add another nominee</button>
+          <label for="nomination_reason">Why do they deserve it?</label>
+          <textarea id="nomination_reason" placeholder="What did they do? Be specific — great nominations tell a quick story."></textarea>
+        ` : ''}
+      </div>
+
+      <div class="optional-fields">
+        <label for="submitter_name">Your name <span class="hint">(optional — leave blank to stay anonymous)</span></label>
+        <input type="text" id="submitter_name">
+
+        <label for="submitter_email">Your email <span class="hint">(optional — lets you edit within 24hrs)</span></label>
+        <input type="email" id="submitter_email">
+      </div>
+
+      <p class="error-msg" id="error-msg"></p>
+      <button type="submit" id="submit-btn">Submit</button>
+    </form>
+  `;
+
+  if (showNomination) {
+    addNomineeRow();
+  }
+
+  const addBtn = document.getElementById('add-nominee-btn');
+  if (addBtn) addBtn.addEventListener('click', addNomineeRow);
+
+  if (isBoth) {
+    const toggleSuggestion = document.getElementById('toggle-suggestion');
+    const toggleNomination = document.getElementById('toggle-nomination');
+    const suggestionPanel = document.getElementById('suggestion-panel');
+    const nominationPanel = document.getElementById('nomination-panel');
+
+    toggleSuggestion.addEventListener('change', () => {
+      suggestionPanel.classList.toggle('hidden', !toggleSuggestion.checked);
+    });
+    toggleNomination.addEventListener('change', () => {
+      nominationPanel.classList.toggle('hidden', !toggleNomination.checked);
+    });
+  }
+
+  document.getElementById('submit-form').addEventListener('submit', (e) => handleSubmit(e, isBoth));
+}
+
+function addNomineeRow() {
+  nomineeCount++;
+  const list = document.getElementById('nominees-list');
+  const row = document.createElement('div');
+  row.className = 'nominee-row';
+  row.innerHTML = `
+    <span class="nominee-number">Nominee ${nomineeCount}</span>
+    <input type="text" class="nominee-name" placeholder="Name" required>
+    <input type="text" class="nominee-role" placeholder="Role (optional)">
+    <button type="button" class="remove-nominee" aria-label="Remove nominee">×</button>
+  `;
+  row.querySelector('.remove-nominee').addEventListener('click', () => {
+    row.remove();
+    renumberNominees();
+  });
+  list.appendChild(row);
+}
+
+function renumberNominees() {
+  const rows = document.querySelectorAll('#nominees-list .nominee-row');
+  rows.forEach((row, i) => {
+    row.querySelector('.nominee-number').textContent = `Nominee ${i + 1}`;
+  });
+  nomineeCount = rows.length;
+}
+
+function collectNominees() {
+  const rows = document.querySelectorAll('#nominees-list .nominee-row');
+  return Array.from(rows).map(row => ({
+    name: row.querySelector('.nominee-name').value.trim(),
+    role: row.querySelector('.nominee-role').value.trim() || null,
+  })).filter(n => n.name);
+}
+
+async function handleSubmit(e, isBoth) {
+  e.preventDefault();
+  const errorEl = document.getElementById('error-msg');
+  const btn = document.getElementById('submit-btn');
+  errorEl.classList.remove('visible');
+
+  const includeSuggestion = isBoth
+    ? document.getElementById('toggle-suggestion').checked
+    : !!document.getElementById('suggestion_text');
+  const includeNomination = isBoth
+    ? document.getElementById('toggle-nomination').checked
+    : !!document.getElementById('nomination_reason');
+
+  if (isBoth && !includeSuggestion && !includeNomination) {
+    showError('Pick at least one: a suggestion, a nomination, or both.');
+    return;
+  }
+
+  const nominees = includeNomination ? collectNominees() : null;
+  if (includeNomination && (!nominees || nominees.length === 0)) {
+    showError('Add at least one nominee, or uncheck the nomination option.');
+    return;
+  }
+
+  const payload = {
+    suggestion_text: includeSuggestion ? document.getElementById('suggestion_text').value.trim() : null,
+    nomination_reason: includeNomination ? document.getElementById('nomination_reason').value.trim() : null,
+    nominees: nominees,
+    submitter_name: document.getElementById('submitter_name').value.trim() || null,
+    submitter_email: document.getElementById('submitter_email').value.trim() || null,
+  };
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  let res;
+  try {
+    res = await fetch(`/api/vb/${slug}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    showError('Network error — please try again.');
+    return;
+  }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    showError(data.detail || 'Something went wrong.');
+    return;
+  }
+
+  const data = await res.json();
+  renderConfirmation(data);
+}
+
+function showError(msg) {
+  const errorEl = document.getElementById('error-msg');
+  const btn = document.getElementById('submit-btn');
+  errorEl.textContent = msg;
+  errorEl.classList.add('visible');
+  btn.disabled = false;
+  btn.textContent = 'Submit';
+}
+
+function renderConfirmation(data) {
+  const editUrl = `${window.location.origin}${data.edit_url}`;
+  const expires = new Date(data.edit_expires_at);
+  card.innerHTML = `
+    <div class="confirmation">
+      <div class="stamp-mark">✓</div>
+      <h1>Thanks — got it.</h1>
+      <p class="subtitle">Your submission has been received.</p>
+      <div class="edit-link-box">
+        <div class="label">Save this link to make changes</div>
+        <div class="edit-link-url" id="edit-url-text">${editUrl}</div>
+        <button class="copy-btn" id="copy-btn">Copy link</button>
+        <p class="timestamp">Editable until ${expires.toLocaleString()}</p>
+      </div>
+    </div>
+  `;
+  document.getElementById('copy-btn').addEventListener('click', () => {
+    navigator.clipboard.writeText(editUrl);
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy link'; }, 1500);
+  });
+}
+
+function stampText(text, maxLen = 20) {
+  const upper = text.toUpperCase();
+  const truncated = upper.length > maxLen ? upper.slice(0, maxLen - 1).trimEnd() + '…' : upper;
+  return escapeHtml(truncated);
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+loadForm();
+</script>
+
+</body>
+</html>
