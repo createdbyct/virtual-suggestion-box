@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Virtual Suggestion Box — suggestions & nominations, one link</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/theme.js"></script>
+</head>
+<body data-page="home">
+
+<nav class="home-nav">
+  <a href="/" class="home-wordmark"><span class="hide-mobile">Virtual </span>Suggestion Box</a>
+  <div class="home-nav-links">
+    <a href="#demo" class="home-nav-demo-link">Try the demo</a>
+    <a href="/login">Log in</a>
+    <a href="/register" class="home-btn-primary">Get started<span class="hide-mobile"> free</span></a>
+  </div>
+</nav>
+
+<header class="home-hero">
+  <div class="stamp-hero">VIRTUAL<br>SUGGESTION<br>BOX</div>
+  <h1>Suggestions and nominations,<br>from one simple link.</h1>
+  <p class="lead">Share one link. People drop in ideas or nominate a coworker — anonymously by default, name optional. You get a dashboard to see it all, share access with your team, and hand off ownership whenever you need to.</p>
+  <div class="home-cta-row">
+    <a href="/register" class="home-btn-primary">Create your free account</a>
+    <a href="#demo" class="home-btn-secondary">Try it first — no signup</a>
+  </div>
+</header>
+
+<section class="home-section">
+  <h2>What you get</h2>
+  <p class="lead">Built for teams who want a real tool, not a spreadsheet with extra steps.</p>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <span class="icon">💡🏆</span>
+      <h3>One form, either or both</h3>
+      <p>Suggestions, employee nominations, or a combined form where people pick which one they're filling out.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">🕶️</span>
+      <h3>Anonymous by default</h3>
+      <p>Every form always accepts anonymous submissions. A name is optional, never required.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">🏅</span>
+      <h3>Multiple nominees at once</h3>
+      <p>Nominate one person or a whole team, each with their own name and role, in a single submission.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">👥</span>
+      <h3>Share without losing control</h3>
+      <p>Give teammates view access to submissions, or hand off ownership entirely — you decide who can edit what.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">🔐</span>
+      <h3>Two-factor login</h3>
+      <p>Scan a QR code with any authenticator app. Optional, but there when you want it.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">📤</span>
+      <h3>Export anytime</h3>
+      <p>Pull every submission as a CSV whenever you need it — no lock-in.</p>
+    </div>
+  </div>
+</section>
+
+<section class="home-section" id="demo">
+  <h2>Try it yourself</h2>
+  <p class="lead">This is a live preview — nothing you type here gets saved anywhere.</p>
+  <div class="demo-card-wrap">
+    <span class="demo-badge">— DEMO — nothing is saved —</span>
+    <div class="card" id="demo-card" style="max-width: none;"></div>
+  </div>
+</section>
+
+<section class="cta-band">
+  <h2>Set up your first form in under a minute.</h2>
+  <p>Free to create — no credit card, nothing to install.</p>
+  <a href="/register" class="home-btn-primary">Create your free account</a>
+</section>
+
+<footer class="home-footer">
+  Virtual Suggestion Box — self-hosted suggestion &amp; nomination forms.
+</footer>
+
+<script>
+// Self-contained demo: mirrors the real submission form's UI for a 'both'
+// type form, but the submit handler never calls the API — it just shows
+// a mock confirmation. This is intentionally NOT wired to any backend
+// project, since it isn't tied to a real account.
+const demoCard = document.getElementById('demo-card');
+let demoNomineeCount = 0;
+
+function renderDemoForm() {
+  demoCard.setAttribute('data-kind', 'suggestion');
+  demoCard.innerHTML = `
+    <div class="stamp">ACME CO. FEEDBACK</div>
+    <p class="eyebrow">Suggestions & recognition</p>
+    <h1>Acme Co. Feedback</h1>
+    <p class="subtitle">Leave a suggestion, nominate a coworker, or both.</p>
+
+    <form id="demo-form">
+      <div class="section-toggle">
+        <label class="toggle-option">
+          <input type="checkbox" id="demo-toggle-suggestion">
+          <span>💡 I have a suggestion</span>
+        </label>
+        <label class="toggle-option">
+          <input type="checkbox" id="demo-toggle-nomination">
+          <span>🏆 I want to nominate someone</span>
+        </label>
+      </div>
+
+      <div class="panel hidden" id="demo-suggestion-panel">
+        <label for="demo-suggestion-text">Your suggestion</label>
+        <textarea id="demo-suggestion-text" placeholder="What's the idea?"></textarea>
+      </div>
+
+      <div class="panel hidden" id="demo-nomination-panel">
+        <label>Who are you nominating? <span class="hint">— add as many as you like</span></label>
+        <div class="nominees-list" id="demo-nominees-list"></div>
+        <button type="button" class="add-nominee-btn" id="demo-add-nominee-btn">+ Add another nominee</button>
+        <label for="demo-nomination-reason">Why do they deserve it?</label>
+        <textarea id="demo-nomination-reason" placeholder="What did they do?"></textarea>
+      </div>
+
+      <div class="optional-fields">
+        <label for="demo-name">Your name <span class="hint">(optional — leave blank to stay anonymous)</span></label>
+        <input type="text" id="demo-name">
+      </div>
+
+      <p class="error-msg" id="demo-error"></p>
+      <button type="submit" id="demo-submit-btn">Submit</button>
+    </form>
+  `;
+
+  const toggleSuggestion = document.getElementById('demo-toggle-suggestion');
+  const toggleNomination = document.getElementById('demo-toggle-nomination');
+  const suggestionPanel = document.getElementById('demo-suggestion-panel');
+  const nominationPanel = document.getElementById('demo-nomination-panel');
+
+  toggleSuggestion.addEventListener('change', () => {
+    suggestionPanel.classList.toggle('hidden', !toggleSuggestion.checked);
+  });
+  toggleNomination.addEventListener('change', () => {
+    nominationPanel.classList.toggle('hidden', !toggleNomination.checked);
+    if (toggleNomination.checked && document.querySelectorAll('#demo-nominees-list .nominee-row').length === 0) {
+      addDemoNomineeRow();
+    }
+  });
+
+  document.getElementById('demo-add-nominee-btn').addEventListener('click', addDemoNomineeRow);
+  document.getElementById('demo-form').addEventListener('submit', handleDemoSubmit);
+}
+
+function addDemoNomineeRow() {
+  demoNomineeCount++;
+  const list = document.getElementById('demo-nominees-list');
+  const row = document.createElement('div');
+  row.className = 'nominee-row';
+  row.innerHTML = `
+    <span class="nominee-number">Nominee ${demoNomineeCount}</span>
+    <input type="text" class="nominee-name" placeholder="Name" required>
+    <input type="text" class="nominee-role" placeholder="Role (optional)">
+    <button type="button" class="remove-nominee" aria-label="Remove nominee">×</button>
+  `;
+  row.querySelector('.remove-nominee').addEventListener('click', () => row.remove());
+  list.appendChild(row);
+}
+
+function handleDemoSubmit(e) {
+  e.preventDefault();
+  const errorEl = document.getElementById('demo-error');
+  errorEl.classList.remove('visible');
+
+  const includeSuggestion = document.getElementById('demo-toggle-suggestion').checked;
+  const includeNomination = document.getElementById('demo-toggle-nomination').checked;
+
+  if (!includeSuggestion && !includeNomination) {
+    errorEl.textContent = 'Pick at least one: a suggestion, a nomination, or both.';
+    errorEl.classList.add('visible');
+    return;
+  }
+
+  demoCard.innerHTML = `
+    <div class="confirmation">
+      <div class="stamp-mark">✓</div>
+      <h1>That's the whole flow.</h1>
+      <p class="subtitle">In a real form, this would be saved securely — with an edit link if you left your name, and instantly visible on your dashboard.</p>
+      <div class="edit-link-box">
+        <div class="label">Ready to make this real?</div>
+        <a href="/register" class="home-btn-primary" style="margin-top:10px; display:inline-block;">Create your free account</a>
+      </div>
+    </div>
+  `;
+}
+
+renderDemoForm();
+</script>
+
+</body>
+</html>
