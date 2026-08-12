@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in — Virtual Suggestion Box</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/theme.js"></script>
+</head>
+<body>
+
+<div class="card" id="card">
+  <a href="/" style="font-family:'Fraunces',serif; font-weight:600; font-size:0.9rem; color:var(--muted); text-decoration:none; display:inline-block; margin-bottom:8px;">&larr; Virtual Suggestion Box</a>
+  <div class="stamp">LOG IN</div>
+  <p class="eyebrow">Form owner account</p>
+  <h1>Welcome back</h1>
+  <p class="subtitle">Log in to manage your forms.</p>
+
+  <form id="login-form">
+    <label for="identifier">Email or username</label>
+    <input type="text" id="identifier" required>
+
+    <label for="password">Password</label>
+    <input type="password" id="password" required>
+    <p style="text-align:right; margin-top:6px;"><a href="/forgot-password" style="color:var(--muted); font-size:0.82rem;">Forgot password?</a></p>
+
+    <div class="optional-fields hidden" id="totp-field">
+      <label for="totp_code">Authenticator code <span class="hint">(or a recovery code)</span></label>
+      <input type="text" id="totp_code" placeholder="123456 or XXXX-XXXX">
+    </div>
+
+    <p class="error-msg" id="error-msg"></p>
+    <button type="submit" id="submit-btn">Log in</button>
+  </form>
+
+  <p class="timestamp" style="text-align:center; margin-top:18px;">
+    No account yet? <a href="/register" style="color: var(--accent);">Create one</a>
+  </p>
+</div>
+
+<script>
+let needsTotp = false;
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById('error-msg');
+  const btn = document.getElementById('submit-btn');
+  errorEl.classList.remove('visible');
+
+  const payload = {
+    identifier: document.getElementById('identifier').value.trim(),
+    password: document.getElementById('password').value,
+  };
+  if (needsTotp) {
+    payload.totp_code = document.getElementById('totp_code').value.trim();
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Logging in…';
+
+  let res;
+  try {
+    res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    showError('Network error — please try again.');
+    return;
+  }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    if (data.detail === '2FA code required') {
+      needsTotp = true;
+      document.getElementById('totp-field').classList.remove('hidden');
+      document.getElementById('totp_code').focus();
+      btn.disabled = false;
+      btn.textContent = 'Log in';
+      return;
+    }
+    showError(data.detail || 'Something went wrong.');
+    return;
+  }
+
+  window.location.href = '/dashboard';
+});
+
+function showError(msg) {
+  const errorEl = document.getElementById('error-msg');
+  const btn = document.getElementById('submit-btn');
+  errorEl.textContent = msg;
+  errorEl.classList.add('visible');
+  btn.disabled = false;
+  btn.textContent = 'Log in';
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Virtual Suggestion Box</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/theme.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+
+<div class="card card-wide" id="card">
+  <p class="subtitle">Loading…</p>
+</div>
+
+<script>
+const card = document.getElementById('card');
+
+function showToast(message) {
+  let toast = document.getElementById('toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast';
+    toast.className = 'toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('visible');
+  clearTimeout(toast._hideTimer);
+  toast._hideTimer = setTimeout(() => toast.classList.remove('visible'), 2200);
+}
+let currentUser = null;
+let myProjects = [];
+let allProjects = [];
+let allUsers = [];
+let activeTab = 'my-forms';
+
+async function init() {
+  let res;
+  try {
+    res = await fetch('/api/auth/me');
+  } catch {
+    card.innerHTML = `<p class="error-msg visible">Couldn't reach the server.</p>`;
+    return;
+  }
+  if (!res.ok) {
+    window.location.href = '/login';
+    return;
+  }
+  currentUser = await res.json();
+
+  await loadMyProjects();
+  if (currentUser.role === 'admin') {
+    await Promise.all([loadAllProjects(), loadUsers()]);
+  }
+  renderCurrentTab();
+}
+
+async function loadMyProjects() {
+  const res = await fetch('/api/projects');
+  myProjects = res.ok ? await res.json() : [];
+}
+
+async function loadAllProjects() {
+  const res = await fetch('/api/admin/projects');
+  allProjects = res.ok ? await res.json() : [];
+}
+
+async function loadUsers() {
+  const res = await fetch('/api/admin/users');
+  allUsers = res.ok ? await res.json() : [];
+}
+
+function typeLabel(type) {
+  if (type === 'suggestion') return 'Suggestions';
+  if (type === 'nomination') return 'Nominations';
+  return 'Both';
+}
+
+// ---- Shared chrome: top bar + tabs ----
+
+function renderTopBar() {
+  return `
+    <div class="top-bar">
+      <div>
+        <p class="eyebrow" style="margin-bottom:2px;">Dashboard</p>
+        <span class="who">${escapeHtml(currentUser.name)} · ${escapeHtml(currentUser.username)}${currentUser.role === 'admin' ? ' · admin' : ''}</span>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="link-btn" id="account-btn">Account</button>
+        <button class="link-btn" id="logout-btn">Log out</button>
+      </div>
+    </div>
+  `;
+}
+
+function tabDefs() {
+  const tabs = [{ id: 'my-forms', label: 'My Forms' }];
+  if (currentUser.role === 'admin') {
+    tabs.push({ id: 'all-forms', label: 'All Forms' });
+    tabs.push({ id: 'users', label: 'Users' });
+  }
+  return tabs;
+}
+
+function renderTabs() {
+  const tabs = tabDefs();
+  if (tabs.length === 1) return ''; // plain owners don't need a tab bar at all
+  return `
+    <div class="tab-row">
+      ${tabs.map(t => `<button class="tab-btn ${activeTab === t.id ? 'active' : ''}" data-tab="${t.id}">${t.label}</button>`).join('')}
+    </div>
+  `;
+}
+
+function bindChrome() {
+  document.getElementById('logout-btn').addEventListener('click', handleLogout);
+  document.getElementById('account-btn').addEventListener('click', renderAccountView);
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTab = btn.dataset.tab;
+      renderCurrentTab();
+    });
+  });
+}
+
+function renderCurrentTab() {
+  if (activeTab === 'all-forms') renderAllFormsView();
+  else if (activeTab === 'users') renderUsersView();
+  else renderMyFormsView();
+}
+
+async function handleLogout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login';
+}
+
+// ---- Account view (profile + 2FA) ----
+
+function renderAccountView() {
+  card.innerHTML = `
+    ${renderTopBar()}
+    <a class="back-link" id="back-link">&larr; Back</a>
+    <h1>Account</h1>
+    <p class="subtitle">Manage your profile and security.</p>
+
+    <p class="section-title">Profile</p>
+    <div class="project-row">
+      <div class="project-row-top">
+        <div>
+          <div class="project-row-title" id="profile-name-display">${escapeHtml(currentUser.name)}</div>
+          <div class="project-row-meta">@${escapeHtml(currentUser.username)} · ${escapeHtml(currentUser.email)}</div>
+        </div>
+        <div class="project-row-actions">
+          <button class="link-btn" id="edit-name-btn">Edit name</button>
+        </div>
+      </div>
+      <form class="optional-fields hidden" id="edit-name-form">
+        <label for="edit-name-input">Name</label>
+        <input type="text" id="edit-name-input" value="${escapeAttr(currentUser.name)}" required>
+        <p class="error-msg" id="edit-name-error"></p>
+        <button type="submit" id="save-name-btn" style="margin-top:14px;">Save name</button>
+      </form>
+    </div>
+
+    <p class="section-title">Two-factor authentication</p>
+    <div id="twofa-section"></div>
+
+    <p class="section-title">Active sessions</p>
+    <p class="hint" style="display:block; margin-bottom:12px;">Every device currently logged into your account.</p>
+    <button class="link-btn" id="revoke-others-btn" style="margin-bottom:12px;">Log out other sessions</button>
+    <div class="project-list" id="sessions-list"></div>
+  `;
+
+  document.getElementById('back-link').addEventListener('click', renderCurrentTab);
+  document.getElementById('edit-name-btn').addEventListener('click', () => {
+    document.getElementById('edit-name-form').classList.remove('hidden');
+  });
+  document.getElementById('edit-name-form').addEventListener('submit', handleSaveName);
+  document.getElementById('revoke-others-btn').addEventListener('click', handleRevokeOtherSessions);
+  bindChrome();
+  renderTwoFactorSection();
+  loadAndRenderSessions();
+}
+
+async function loadAndRenderSessions() {
+  const res = await fetch('/api/auth/sessions');
+  const sessions = res.ok ? await res.json() : [];
+  const list = document.getElementById('sessions-list');
+
+  if (sessions.length === 0) {
+    list.innerHTML = `<div class="empty-state">No active sessions.</div>`;
+    return;
+  }
+
+  list.innerHTML = sessions.map(s => {
+    const when = new Date(s.created_at).toLocaleString();
+    const ua = s.user_agent ? escapeHtml(truncate(s.user_agent, 60)) : 'Unknown device';
+    return `
+      <div class="project-row">
+        <div class="project-row-top">
+          <div>
+            <div class="project-row-title">${ua} ${s.is_current ? '<span class="badge">This device</span>' : ''}</div>
+            <div class="project-row-meta">${escapeHtml(s.ip_address || 'unknown IP')} · signed in ${when}</div>
+          </div>
+          ${s.is_current ? '' : `
+            <div class="project-row-actions">
+              <button class="link-btn revoke-session-btn" data-id="${s.id}">Log out</button>
+            </div>
+          `}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.revoke-session-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleRevokeSession(parseInt(btn.dataset.id)));
+  });
+}
+
+async function handleRevokeSession(sessionId) {
+  const res = await fetch(`/api/auth/sessions/${sessionId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    alert('Could not log out that session — please try again.');
+    return;
+  }
+  loadAndRenderSessions();
+}
+
+async function handleRevokeOtherSessions() {
+  const confirmed = window.confirm('Log out every other device? This device stays logged in.');
+  if (!confirmed) return;
+
+  const res = await fetch('/api/auth/sessions/revoke-others', { method: 'POST' });
+  if (!res.ok) {
+    alert('Could not log out other sessions — please try again.');
+    return;
+  }
+  loadAndRenderSessions();
+}
+
+function truncate(str, maxLen) {
+  return str.length > maxLen ? str.slice(0, maxLen - 1) + '…' : str;
+}
+
+async function handleSaveName(e) {
+  e.preventDefault();
+  const errorEl = document.getElementById('edit-name-error');
+  const btn = document.getElementById('save-name-btn');
+  errorEl.classList.remove('visible');
+
+  const name = document.getElementById('edit-name-input').value.trim();
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const res = await fetch('/api/auth/me', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || 'Something went wrong.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Save name';
+    return;
+  }
+
+  currentUser = await res.json();
+  renderAccountView();
+}
+
+function renderTwoFactorSection() {
+  const section = document.getElementById('twofa-section');
+
+  if (currentUser.totp_enabled) {
+    section.innerHTML = `
+      <div class="project-row">
+        <div class="project-row-top">
+          <div>
+            <div class="project-row-title">Enabled <span class="badge">Active</span></div>
+            <div class="project-row-meta">Your account requires a code from your authenticator app to log in.</div>
+          </div>
+          <div class="project-row-actions">
+            <button class="link-btn" id="show-disable-btn">Disable</button>
+          </div>
+        </div>
+        <div class="optional-fields hidden" id="disable-form-wrap">
+          <label for="disable-password">Confirm your password to disable</label>
+          <input type="password" id="disable-password">
+          <p class="error-msg" id="disable-error"></p>
+          <button type="button" id="confirm-disable-btn" style="margin-top:14px;">Disable 2FA</button>
+        </div>
+      </div>
+
+      <div class="project-row" style="margin-top:10px;">
+        <div class="project-row-top">
+          <div>
+            <div class="project-row-title">Recovery codes</div>
+            <div class="project-row-meta" id="recovery-codes-remaining">Loading…</div>
+          </div>
+          <div class="project-row-actions">
+            <button class="link-btn" id="regenerate-codes-btn">Regenerate codes</button>
+          </div>
+        </div>
+        <div id="recovery-codes-display"></div>
+      </div>
+    `;
+    document.getElementById('show-disable-btn').addEventListener('click', () => {
+      document.getElementById('disable-form-wrap').classList.remove('hidden');
+    });
+    document.getElementById('confirm-disable-btn').addEventListener('click', handleDisable2fa);
+    document.getElementById('regenerate-codes-btn').addEventListener('click', handleRegenerateRecoveryCodes);
+    loadRecoveryCodesRemaining();
+  } else {
+    section.innerHTML = `
+      <div class="project-row">
+        <div class="project-row-top">
+          <div>
+            <div class="project-row-title">Not enabled <span class="badge badge-muted">Off</span></div>
+            <div class="project-row-meta">Add a code from an authenticator app (Google Authenticator, Authy, etc.) as a second login step.</div>
+          </div>
+          <div class="project-row-actions">
+            <button class="link-btn" id="start-setup-btn">Enable 2FA</button>
+          </div>
+        </div>
+        <div id="setup-wrap"></div>
+      </div>
+    `;
+    document.getElementById('start-setup-btn').addEventListener('click', handleStart2faSetup);
+  }
+}
+
+async function loadRecoveryCodesRemaining() {
+  const res = await fetch('/api/auth/2fa/recovery-codes/remaining');
+  const el = document.getElementById('recovery-codes-remaining');
+  if (!res.ok || !el) return;
+  const data = await res.json();
+  el.textContent = `${data.remaining} unused code${data.remaining === 1 ? '' : 's'} remaining`;
+}
+
+function showRecoveryCodes(codes) {
+  const wrap = document.getElementById('recovery-codes-display');
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <div class="optional-fields">
+      <p class="hint" style="display:block; margin-bottom:8px;">Save these somewhere safe — each works once, and this is the only time they're shown. Use one in place of your authenticator code if you lose access to your device.</p>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:0.85rem; line-height:1.9; background:var(--accent-soft); border-radius:var(--radius); padding:12px 16px;">
+        ${codes.map(c => escapeHtml(c)).join('<br>')}
+      </div>
+    </div>
+  `;
+}
+
+async function handleRegenerateRecoveryCodes() {
+  const confirmed = window.confirm('Generate new recovery codes? Your existing codes will stop working.');
+  if (!confirmed) return;
+
+  const res = await fetch('/api/auth/2fa/recovery-codes/regenerate', { method: 'POST' });
+  if (!res.ok) {
+    alert('Could not regenerate codes — please try again.');
+    return;
+  }
+  const data = await res.json();
+  showRecoveryCodes(data.codes);
+  loadRecoveryCodesRemaining();
+}
+
+async function handleStart2faSetup() {
+  const res = await fetch('/api/auth/2fa/setup', { method: 'POST' });
+  if (!res.ok) {
+    alert('Could not start 2FA setup — please try again.');
+    return;
+  }
+  const { secret, otpauth_url } = await res.json();
+
+  const wrap = document.getElementById('setup-wrap');
+  wrap.innerHTML = `
+    <div class="optional-fields">
+      <label>Scan this with your authenticator app</label>
+      <div id="qr-code" style="background:#fff; padding:12px; border-radius:8px; display:inline-block; margin-top:6px;"></div>
+      <p class="hint" style="display:block; margin-top:10px;">Or enter this key manually: <span style="font-family:'IBM Plex Mono',monospace;">${secret}</span></p>
+
+      <label for="confirm-code" style="margin-top:18px;">Enter the 6-digit code from the app</label>
+      <input type="text" id="confirm-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456">
+      <p class="error-msg" id="setup-error"></p>
+      <button type="button" id="confirm-setup-btn" style="margin-top:14px;">Confirm and enable</button>
+    </div>
+  `;
+
+  new QRCode(document.getElementById('qr-code'), {
+    text: otpauth_url,
+    width: 180,
+    height: 180,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+  });
+
+  document.getElementById('confirm-setup-btn').addEventListener('click', handleConfirm2fa);
+}
+
+async function handleConfirm2fa() {
+  const errorEl = document.getElementById('setup-error');
+  const btn = document.getElementById('confirm-setup-btn');
+  errorEl.classList.remove('visible');
+
+  const code = document.getElementById('confirm-code').value.trim();
+  btn.disabled = true;
+  btn.textContent = 'Confirming…';
+
+  const res = await fetch('/api/auth/2fa/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || 'Something went wrong.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Confirm and enable';
+    return;
+  }
+
+  const data = await res.json();
+  currentUser = data.user;
+
+  // Show the recovery codes right here, before re-rendering the section —
+  // this is the only time they're ever shown in plaintext.
+  const wrap = document.getElementById('setup-wrap');
+  wrap.innerHTML = `
+    <div class="optional-fields">
+      <div class="project-row-title" style="margin-bottom:6px;">✓ 2FA enabled — save your recovery codes</div>
+      <p class="hint" style="display:block; margin-bottom:8px;">Each works once. Use one in place of your authenticator code if you ever lose access to your device. They won't be shown again after you leave this page.</p>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:0.85rem; line-height:1.9; background:var(--accent-soft); border-radius:var(--radius); padding:12px 16px;">
+        ${data.recovery_codes.map(c => escapeHtml(c)).join('<br>')}
+      </div>
+      <button type="button" id="done-2fa-setup-btn" style="margin-top:16px;">Done</button>
+    </div>
+  `;
+  document.getElementById('done-2fa-setup-btn').addEventListener('click', renderTwoFactorSection);
+}
+
+async function handleDisable2fa() {
+  const errorEl = document.getElementById('disable-error');
+  const btn = document.getElementById('confirm-disable-btn');
+  errorEl.classList.remove('visible');
+
+  const password = document.getElementById('disable-password').value;
+  btn.disabled = true;
+  btn.textContent = 'Disabling…';
+
+  const res = await fetch('/api/auth/2fa/disable', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || 'Something went wrong.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Disable 2FA';
+    return;
+  }
+
+  currentUser = await res.json();
+  renderTwoFactorSection();
+}
+
+// ---- My Forms tab (every logged-in user, admin or not) ----
+
+function renderMyFormsView() {
+  activeTab = 'my-forms';
+  card.innerHTML = `
+    ${renderTopBar()}
+    ${renderTabs()}
+    <h1>Your forms</h1>
+    <p class="subtitle">Create a link, share it, and see what comes back.</p>
+
+    <p class="section-title">New form</p>
+    <form id="create-form">
+      <label for="title">Title</label>
+      <input type="text" id="title" placeholder="e.g. Employee of the Month" required>
+
+      <div class="form-row">
+        <div>
+          <label for="type">Type</label>
+          <select id="type">
+            <option value="both">Suggestions + Nominations</option>
+            <option value="suggestion">Suggestions only</option>
+            <option value="nomination">Nominations only</option>
+          </select>
+        </div>
+        <div>
+          <label for="slug">Custom link <span class="hint">(optional)</span></label>
+          <input type="text" id="slug" placeholder="auto-generated">
+        </div>
+      </div>
+
+      <p class="hint" style="margin-top:10px; display:block;">Every form always accepts anonymous submissions — people can optionally leave their name.</p>
+
+      <p class="error-msg" id="create-error"></p>
+      <button type="submit" id="create-btn">Create form</button>
+    </form>
+
+    <p class="section-title">Your forms (${myProjects.length})</p>
+    <div class="project-list" id="project-list"></div>
+  `;
+
+  bindChrome();
+  renderMyProjectList();
+  document.getElementById('create-form').addEventListener('submit', handleCreate);
+}
+
+function renderMyProjectList() {
+  const list = document.getElementById('project-list');
+  if (myProjects.length === 0) {
+    list.innerHTML = `<div class="empty-state">No forms yet — create one above to get a shareable link.</div>`;
+    return;
+  }
+
+  list.innerHTML = myProjects.map(p => {
+    const url = `${window.location.origin}/vb/${p.slug}`;
+    const ownershipBadge = p.is_owner
+      ? ''
+      : `<span class="badge badge-muted">Shared by ${escapeHtml(p.owner_name || 'someone')}</span>`;
+
+    return `
+      <div class="project-row">
+        <div class="project-row-top">
+          <div>
+            <div class="project-row-title">${escapeHtml(p.title)} <span class="badge">${typeLabel(p.type)}</span> ${ownershipBadge}</div>
+            <div class="project-row-meta">${url} · ${p.submission_count} submission${p.submission_count === 1 ? '' : 's'}</div>
+          </div>
+          <div class="project-row-actions">
+            <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
+            <button class="link-btn share-link-btn" data-url="${url}">Share</button>
+            <button class="link-btn view-submissions-btn" data-id="${p.id}">View submissions</button>
+            ${p.is_owner ? `<button class="link-btn edit-form-btn" data-id="${p.id}">Edit</button>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.share-link-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      navigator.clipboard.writeText(btn.dataset.url);
+      showToast('Link copied — ready to share');
+    });
+  });
+  list.querySelectorAll('.view-submissions-btn').forEach(btn => {
+    btn.addEventListener('click', () => renderSubmissionsPage(parseInt(btn.dataset.id)));
+  });
+  list.querySelectorAll('.edit-form-btn').forEach(btn => {
+    btn.addEventListener('click', () => renderEditPage(parseInt(btn.dataset.id)));
+  });
+}
+
+async function handleCreate(e) {
+  e.preventDefault();
+  const errorEl = document.getElementById('create-error');
+  const btn = document.getElementById('create-btn');
+  errorEl.classList.remove('visible');
+
+  const payload = {
+    title: document.getElementById('title').value.trim(),
+    type: document.getElementById('type').value,
+    slug: document.getElementById('slug').value.trim() || null,
+  };
+
+  btn.disabled = true;
+  btn.textContent = 'Creating…';
+
+  let res;
+  try {
+    res = await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    errorEl.textContent = 'Network error — please try again.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Create form';
+    return;
+  }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || 'Something went wrong.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Create form';
+    return;
+  }
+
+  await loadMyProjects();
+  if (currentUser.role === 'admin') await loadAllProjects();
+  renderMyFormsView();
+}
+
+// ---- Form detail: one page for everything about a single form ----
+
+async function renderSubmissionsPage(projectId) {
+  const project = myProjects.find(p => p.id === projectId);
+  card.innerHTML = `${renderTopBar()}<p class="subtitle">Loading…</p>`;
+
+  // Only reset filters when switching to a different form — coming back
+  // to the same one (e.g. after visiting Edit) keeps your place.
+  if (currentSubmissionProjectId !== projectId) {
+    currentSubmissionPage = 1;
+    currentSubmissionSearch = '';
+    currentSubmissionStatus = '';
+    currentSubmissionProjectId = projectId;
+  }
+
+  const url = `${window.location.origin}/vb/${project.slug}`;
+  const ownershipBadge = project.is_owner
+    ? ''
+    : `<span class="badge badge-muted">Shared by ${escapeHtml(project.owner_name || 'someone')}</span>`;
+
+  card.innerHTML = `
+    ${renderTopBar()}
+    <a class="back-link" id="back-link">&larr; Back to your forms</a>
+    <h1>${escapeHtml(project.title)} <span class="badge">${typeLabel(project.type)}</span> ${ownershipBadge}</h1>
+    <p class="subtitle" style="font-family:'IBM Plex Mono',monospace; font-size:0.82rem;">${url}</p>
+
+    <p class="section-title" id="submissions-count-label">Submissions</p>
+    <div class="status-filter-pills" id="status-filter-pills"></div>
+    <input type="text" id="submission-search" placeholder="Search submissions…" value="${escapeAttr(currentSubmissionSearch)}" style="margin-bottom:16px;">
+    <button class="link-btn" id="export-btn" style="margin-bottom:16px;">Export CSV</button>
+    <div class="bulk-actions-bar" id="bulk-actions-bar"></div>
+    <div class="submission-list" id="submission-list"></div>
+    <div id="pagination-controls" style="display:flex; justify-content:space-between; align-items:center; margin-top:14px;"></div>
+  `;
+
+  document.getElementById('back-link').addEventListener('click', renderMyFormsView);
+  document.getElementById('export-btn').addEventListener('click', () => {
+    window.location.href = `/api/projects/${projectId}/export.csv`;
+  });
+  bindChrome();
+
+  let searchDebounce;
+  document.getElementById('submission-search').addEventListener('input', (e) => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      currentSubmissionSearch = e.target.value.trim();
+      currentSubmissionPage = 1;
+      loadAndRenderSubmissions(projectId);
+    }, 300);
+  });
+
+  await loadStatusCountsAndRenderPills(projectId);
+  await loadAndRenderSubmissions(projectId);
+}
+
+async function loadStatusCountsAndRenderPills(projectId) {
+  const res = await fetch(`/api/projects/${projectId}/submissions/status-counts`);
+  const counts = res.ok ? await res.json() : { new: 0, reviewed: 0, done: 0, total: 0 };
+
+  const pills = [
+    { key: '', cssKey: 'all', label: 'All', count: counts.total },
+    { key: 'new', cssKey: 'new', label: 'New', count: counts.new },
+    { key: 'reviewed', cssKey: 'reviewed', label: 'Reviewed', count: counts.reviewed },
+    { key: 'done', cssKey: 'done', label: 'Done', count: counts.done },
+  ];
+
+  const wrap = document.getElementById('status-filter-pills');
+  wrap.innerHTML = pills.map(p => `
+    <button type="button" class="status-filter-pill pill-${p.cssKey} ${currentSubmissionStatus === p.key ? 'active' : ''}" data-status="${p.key}">
+      ${p.label} (${p.count})
+    </button>
+  `).join('');
+
+  wrap.querySelectorAll('.status-filter-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentSubmissionStatus = btn.dataset.status;
+      currentSubmissionPage = 1;
+      wrap.querySelectorAll('.status-filter-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadAndRenderSubmissions(projectId);
+    });
+  });
+}
+
+async function renderEditPage(projectId) {
+  const project = myProjects.find(p => p.id === projectId);
+  card.innerHTML = `${renderTopBar()}<p class="subtitle">Loading…</p>`;
+
+  const sharesRes = await fetch(`/api/projects/${projectId}/shares`);
+  const shares = sharesRes.ok ? await sharesRes.json() : [];
+
+  const url = `${window.location.origin}/vb/${project.slug}`;
+
+  card.innerHTML = `
+    ${renderTopBar()}
+    <a class="back-link" id="back-link">&larr; Back to your forms</a>
+    <h1>${escapeHtml(project.title)} <span class="badge">${typeLabel(project.type)}</span></h1>
+    <p class="subtitle" style="font-family:'IBM Plex Mono',monospace; font-size:0.82rem;">${url}</p>
+    <button class="link-btn copy-link-btn" data-url="${url}" style="margin-bottom:4px;">Copy link</button>
+
+    <p class="section-title">Form settings</p>
+    <form id="edit-form">
+      <label for="edit-title">Title</label>
+      <input type="text" id="edit-title" value="${escapeAttr(project.title)}" required>
+
+      <div class="form-row">
+        <div>
+          <label for="edit-type">Type</label>
+          <select id="edit-type">
+            <option value="both" ${project.type === 'both' ? 'selected' : ''}>Suggestions + Nominations</option>
+            <option value="suggestion" ${project.type === 'suggestion' ? 'selected' : ''}>Suggestions only</option>
+            <option value="nomination" ${project.type === 'nomination' ? 'selected' : ''}>Nominations only</option>
+          </select>
+        </div>
+        <div>
+          <label for="edit-slug">Link</label>
+          <input type="text" id="edit-slug" value="${escapeAttr(project.slug)}">
+        </div>
+      </div>
+
+      <p class="error-msg" id="edit-error"></p>
+      <button type="submit" id="edit-save-btn">Save changes</button>
+    </form>
+
+    <p class="section-title">Share access</p>
+    <p class="hint" style="display:block; margin-bottom:12px;">People you add can view submissions and export CSV, but can't edit, delete, or manage sharing.</p>
+    <form id="share-form">
+      <label for="share-identifier">Their email or username</label>
+      <input type="text" id="share-identifier" required>
+      <p class="error-msg" id="share-error"></p>
+      <button type="submit" id="share-btn">Give access</button>
+    </form>
+
+    <p class="section-title" id="shares-count-label" style="margin-top:20px;">Has access (${shares.length})</p>
+    <div class="project-list" id="shares-list"></div>
+
+    <p class="section-title">Transfer ownership</p>
+    <p class="hint" style="display:block; margin-bottom:10px;">Hands this form to someone else entirely — they become the owner and can edit, delete, or share it. You'll automatically keep view access.</p>
+    <form id="transfer-form">
+      <label for="transfer-identifier">New owner's email or username</label>
+      <input type="text" id="transfer-identifier" required>
+      <p class="error-msg" id="transfer-error"></p>
+      <button type="submit" id="transfer-btn" style="background: var(--error);">Transfer ownership</button>
+    </form>
+
+    <p class="section-title">Danger zone</p>
+    <button type="button" id="delete-btn" style="background: var(--error);">Delete this form</button>
+  `;
+
+  document.getElementById('back-link').addEventListener('click', renderMyFormsView);
+  document.querySelectorAll('.copy-link-btn').forEach(btn => btn.addEventListener('click', copyLinkHandler));
+  bindChrome();
+
+  document.getElementById('edit-form').addEventListener('submit', (e) => handleEditSave(e, projectId));
+  document.getElementById('share-form').addEventListener('submit', (e) => handleAddShare(e, projectId));
+  document.getElementById('transfer-form').addEventListener('submit', (e) => handleTransferOwnership(e, projectId, project.title));
+  document.getElementById('delete-btn').addEventListener('click', () => handleDelete(projectId));
+  renderSharesList(shares, projectId);
+}
+
+let currentSubmissionPage = 1;
+let currentSubmissionSearch = '';
+let currentSubmissionStatus = '';
+let currentSubmissionProjectId = null;
+let selectedSubmissionIds = new Set();
+const SUBMISSIONS_PAGE_SIZE = 10;
+
+async function loadAndRenderSubmissions(projectId) {
+  const project = myProjects.find(p => p.id === projectId);
+  const params = new URLSearchParams({
+    page: currentSubmissionPage,
+    page_size: SUBMISSIONS_PAGE_SIZE,
+  });
+  if (currentSubmissionSearch) params.set('search', currentSubmissionSearch);
+  if (currentSubmissionStatus) params.set('status', currentSubmissionStatus);
+
+  const res = await fetch(`/api/projects/${projectId}/submissions?${params}`);
+  const data = res.ok ? await res.json() : { submissions: [], total: 0 };
+
+  selectedSubmissionIds.clear();
+  document.getElementById('submissions-count-label').textContent = `Submissions (${data.total})`;
+  renderSubmissionList(data.submissions, projectId, project.is_owner);
+  renderBulkActionsBar(projectId, project.is_owner);
+  renderPaginationControls(data.total, projectId);
+}
+
+function renderBulkActionsBar(projectId, isOwner) {
+  const bar = document.getElementById('bulk-actions-bar');
+  if (!bar) return; // not present on admin's read-only submissions view
+
+  const rows = document.querySelectorAll('#submission-list .submission-checkbox');
+  if (rows.length === 0) {
+    bar.innerHTML = '';
+    return;
+  }
+
+  const allSelected = rows.length > 0 && selectedSubmissionIds.size === rows.length;
+  const count = selectedSubmissionIds.size;
+
+  bar.innerHTML = `
+    <div class="checkbox-row" style="margin: 0;">
+      <input type="checkbox" id="select-all-checkbox" ${allSelected ? 'checked' : ''}>
+      <label for="select-all-checkbox">Select all on this page</label>
+    </div>
+    <div class="bulk-actions-controls ${count === 0 ? 'hidden' : ''}">
+      <span class="hint">${count} selected</span>
+      <button type="button" class="link-btn bulk-status-btn" data-status="reviewed">Mark reviewed</button>
+      <button type="button" class="link-btn bulk-status-btn" data-status="done">Mark done</button>
+      ${isOwner ? `<button type="button" class="link-btn bulk-delete-btn" style="color: var(--error); border-color: var(--error);">Delete selected</button>` : ''}
+    </div>
+  `;
+
+  document.getElementById('select-all-checkbox').addEventListener('change', (e) => {
+    rows.forEach(cb => {
+      cb.checked = e.target.checked;
+      const id = parseInt(cb.dataset.id);
+      if (e.target.checked) selectedSubmissionIds.add(id);
+      else selectedSubmissionIds.delete(id);
+    });
+    renderBulkActionsBar(projectId, isOwner);
+  });
+
+  bar.querySelectorAll('.bulk-status-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleBulkStatusChange(projectId, btn.dataset.status));
+  });
+  const deleteBtn = bar.querySelector('.bulk-delete-btn');
+  if (deleteBtn) deleteBtn.addEventListener('click', () => handleBulkDelete(projectId));
+}
+
+async function handleBulkStatusChange(projectId, status) {
+  const ids = Array.from(selectedSubmissionIds);
+  await Promise.all(ids.map(id =>
+    fetch(`/api/projects/${projectId}/submissions/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    })
+  ));
+  showToast(`Marked ${ids.length} submission${ids.length === 1 ? '' : 's'} as ${status}`);
+  await loadStatusCountsAndRenderPills(projectId);
+  await loadAndRenderSubmissions(projectId);
+}
+
+async function handleBulkDelete(projectId) {
+  const ids = Array.from(selectedSubmissionIds);
+  const confirmed = window.confirm(`Delete ${ids.length} submission${ids.length === 1 ? '' : 's'}? This can't be undone.`);
+  if (!confirmed) return;
+
+  await Promise.all(ids.map(id =>
+    fetch(`/api/projects/${projectId}/submissions/${id}`, { method: 'DELETE' })
+  ));
+  showToast(`Deleted ${ids.length} submission${ids.length === 1 ? '' : 's'}`);
+  await loadStatusCountsAndRenderPills(projectId);
+  await loadAndRenderSubmissions(projectId);
+  await loadMyProjects();
+}
+
+function renderPaginationControls(total, projectId) {
+  const el = document.getElementById('pagination-controls');
+  const totalPages = Math.max(1, Math.ceil(total / SUBMISSIONS_PAGE_SIZE));
+  if (totalPages <= 1) {
+    el.innerHTML = '';
+    return;
+  }
+
+  el.innerHTML = `
+    <button class="link-btn" id="prev-page-btn" ${currentSubmissionPage <= 1 ? 'disabled' : ''}>&larr; Prev</button>
+    <span class="hint">Page ${currentSubmissionPage} of ${totalPages}</span>
+    <button class="link-btn" id="next-page-btn" ${currentSubmissionPage >= totalPages ? 'disabled' : ''}>Next &rarr;</button>
+  `;
+  const prevBtn = document.getElementById('prev-page-btn');
+  const nextBtn = document.getElementById('next-page-btn');
+  if (!prevBtn.disabled) prevBtn.addEventListener('click', () => {
+    currentSubmissionPage--;
+    loadAndRenderSubmissions(projectId);
+  });
+  if (!nextBtn.disabled) nextBtn.addEventListener('click', () => {
+    currentSubmissionPage++;
+    loadAndRenderSubmissions(projectId);
+  });
+}
+
+function copyLinkHandler(e) {
+  const btn = e.currentTarget;
+  navigator.clipboard.writeText(btn.dataset.url);
+  showToast('Link copied — ready to share');
+}
+
+async function handleEditSave(e, projectId) {
+  e.preventDefault();
+  const errorEl = document.getElementById('edit-error');
+  const btn = document.getElementById('edit-save-btn');
+  errorEl.classList.remove('visible');
+
+  const payload = {
+    title: document.getElementById('edit-title').value.trim(),
+    type: document.getElementById('edit-type').value,
+    slug: document.getElementById('edit-slug').value.trim(),
+  };
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  let res;
+  try {
+    res = await fetch(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    errorEl.textContent = 'Network error — please try again.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Save changes';
+    return;
+  }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || 'Something went wrong.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Save changes';
+    return;
+  }
+
+  await loadMyProjects();
+  if (currentUser.role === 'admin') await loadAllProjects();
+  renderEditPage(projectId);
+}
+
+async function handleDelete(projectId) {
+  const project = myProjects.find(p => p.id === projectId);
+  const confirmed = window.confirm(`Delete "${project.title}"? This permanently deletes the form and all ${project.submission_count} submission${project.submission_count === 1 ? '' : 's'} in it. This can't be undone.`);
+  if (!confirmed) return;
+
+  const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    alert('Could not delete this form — please try again.');
+    return;
+  }
+  await loadMyProjects();
+  if (currentUser.role === 'admin') await loadAllProjects();
+  renderMyFormsView();
+}
+
+function renderSharesList(shares, projectId) {
+  const list = document.getElementById('shares-list');
+  if (shares.length === 0) {
+    list.innerHTML = `<div class="empty-state">Nobody else has access yet.</div>`;
+    return;
+  }
+  list.innerHTML = shares.map(s => `
+    <div class="project-row">
+      <div class="project-row-top">
+        <div>
+          <div class="project-row-title">${escapeHtml(s.name)}</div>
+          <div class="project-row-meta">@${escapeHtml(s.username)} · ${escapeHtml(s.email)}</div>
+        </div>
+        <div class="project-row-actions">
+          <button class="link-btn remove-share-btn" data-user-id="${s.user_id}">Remove</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.remove-share-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleRemoveShare(projectId, parseInt(btn.dataset.userId)));
+  });
+}
+
+async function handleAddShare(e, projectId) {
+  e.preventDefault();
+  const errorEl = document.getElementById('share-error');
+  const btn = document.getElementById('share-btn');
+  errorEl.classList.remove('visible');
+
+  const identifier = document.getElementById('share-identifier').value.trim();
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+
+  const res = await fetch(`/api/projects/${projectId}/shares`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || 'Something went wrong.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Give access';
+    return;
+  }
+
+  document.getElementById('share-identifier').value = '';
+  btn.disabled = false;
+  btn.textContent = 'Give access';
+
+  const sharesRes = await fetch(`/api/projects/${projectId}/shares`);
+  const shares = sharesRes.ok ? await sharesRes.json() : [];
+  document.getElementById('shares-count-label').textContent = `Has access (${shares.length})`;
+  renderSharesList(shares, projectId);
+}
+
+async function handleRemoveShare(projectId, userId) {
+  const res = await fetch(`/api/projects/${projectId}/shares/${userId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    alert('Could not remove access — please try again.');
+    return;
+  }
+  const sharesRes = await fetch(`/api/projects/${projectId}/shares`);
+  const shares = sharesRes.ok ? await sharesRes.json() : [];
+  document.getElementById('shares-count-label').textContent = `Has access (${shares.length})`;
+  renderSharesList(shares, projectId);
+}
+
+async function handleTransferOwnership(e, projectId, projectTitle) {
+  e.preventDefault();
+  const errorEl = document.getElementById('transfer-error');
+  const btn = document.getElementById('transfer-btn');
+  errorEl.classList.remove('visible');
+
+  const identifier = document.getElementById('transfer-identifier').value.trim();
+
+  const confirmed = window.confirm(`Transfer "${projectTitle}" to ${identifier}? You'll no longer be able to edit it — you'll keep view access only. This can't be undone by you alone.`);
+  if (!confirmed) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Transferring…';
+
+  const res = await fetch(`/api/projects/${projectId}/transfer-ownership`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || 'Something went wrong.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Transfer ownership';
+    return;
+  }
+
+  await loadMyProjects();
+  if (currentUser.role === 'admin') await loadAllProjects();
+  renderMyFormsView();
+}
+
+// ---- All Forms tab (admin only) ----
+
+function renderAllFormsView() {
+  activeTab = 'all-forms';
+  card.innerHTML = `
+    ${renderTopBar()}
+    ${renderTabs()}
+    <h1>All forms</h1>
+    <p class="subtitle">Every form across every owner.</p>
+    <div class="project-list" id="admin-project-list"></div>
+  `;
+  bindChrome();
+
+  const list = document.getElementById('admin-project-list');
+  if (allProjects.length === 0) {
+    list.innerHTML = `<div class="empty-state">No forms have been created yet.</div>`;
+    return;
+  }
+
+  list.innerHTML = allProjects.map(p => {
+    const url = `${window.location.origin}/vb/${p.slug}`;
+    return `
+      <div class="project-row">
+        <div class="project-row-top">
+          <div>
+            <div class="project-row-title">${escapeHtml(p.title)} <span class="badge">${typeLabel(p.type)}</span></div>
+            <div class="project-row-meta">${escapeHtml(p.owner_email)} · ${url} · ${p.submission_count} submission${p.submission_count === 1 ? '' : 's'}</div>
+          </div>
+          <div class="project-row-actions">
+            <button class="link-btn view-admin-submissions-btn" data-id="${p.id}">View submissions</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.view-admin-submissions-btn').forEach(btn => {
+    btn.addEventListener('click', () => renderAdminSubmissionsView(parseInt(btn.dataset.id)));
+  });
+}
+
+async function renderAdminSubmissionsView(projectId) {
+  const project = allProjects.find(p => p.id === projectId);
+  card.innerHTML = `${renderTopBar()}<p class="subtitle">Loading submissions…</p>`;
+
+  const res = await fetch(`/api/admin/projects/${projectId}/submissions`);
+  const submissions = res.ok ? await res.json() : [];
+
+  card.innerHTML = `
+    ${renderTopBar()}
+    <a class="back-link" id="back-link">&larr; Back to all forms</a>
+    <h1>${escapeHtml(project.title)} <span class="badge">${typeLabel(project.type)}</span></h1>
+    <p class="subtitle">Owned by ${escapeHtml(project.owner_email)} · ${submissions.length} submission${submissions.length === 1 ? '' : 's'}</p>
+    <button class="link-btn" id="admin-export-btn" style="margin-bottom:16px;">Export CSV</button>
+    <div class="submission-list" id="submission-list"></div>
+  `;
+
+  document.getElementById('back-link').addEventListener('click', renderAllFormsView);
+  document.getElementById('admin-export-btn').addEventListener('click', () => {
+    window.location.href = `/api/admin/projects/${projectId}/export.csv`;
+  });
+  bindChrome();
+  renderSubmissionList(submissions);
+}
+
+// shared by both "view submissions" screens. projectId+isOwner are only
+// passed from the owner/viewer detail view — admin's read-only view omits
+// them, which skips the status control and delete button entirely.
+function renderTruncatable(text, maxLen = 280) {
+  if (text.length <= maxLen) {
+    return `<span>${escapeHtml(text)}</span>`;
+  }
+  const truncated = text.slice(0, maxLen).trim() + '…';
+  return `
+    <span class="truncatable-text" data-truncated="${escapeAttr(truncated)}" data-full="${escapeAttr(text)}" data-expanded="false">${escapeHtml(truncated)}</span>
+    <button type="button" class="show-more-btn link-btn" style="margin-left:6px; padding:2px 10px; font-size:0.75rem; vertical-align:middle;">Show more</button>
+  `;
+}
+
+function renderSubmissionList(submissions, projectId = null, isOwner = false) {
+  const list = document.getElementById('submission-list');
+  if (submissions.length === 0) {
+    const isFiltered = projectId && (currentSubmissionSearch || currentSubmissionStatus);
+    const message = isFiltered
+      ? "Nothing matches this filter — you're caught up, or try a different search."
+      : 'No submissions yet.';
+    list.innerHTML = `<div class="empty-state">${message}</div>`;
+    return;
+  }
+
+  const statusLabels = { new: 'New', reviewed: 'Reviewed', done: 'Done' };
+
+  list.innerHTML = submissions.map(s => {
+    const who = s.is_anonymous
+      ? 'Anonymous'
+      : escapeHtml(s.submitter_name || 'Unknown') + (s.submitter_email ? ` · ${escapeHtml(s.submitter_email)}` : '');
+    const when = new Date(s.created_at).toLocaleString();
+
+    let body = '';
+    if (s.suggestion_text) {
+      body += `<div class="field-label">Suggestion</div><div>${renderTruncatable(s.suggestion_text)}</div>`;
+    }
+    if (s.nominees && s.nominees.length > 0) {
+      const chips = s.nominees.map(n => `<span class="nominee-chip">${escapeHtml(n.name)}${n.role ? ' · ' + escapeHtml(n.role) : ''}</span>`).join('');
+      body += `<div class="field-label">Nominees</div><div>${chips}</div>`;
+      if (s.nomination_reason) {
+        body += `<div class="field-label">Reason</div><div>${renderTruncatable(s.nomination_reason)}</div>`;
+      }
+    }
+
+    const controls = projectId ? `
+      <div style="display:flex; gap:8px; align-items:center; margin-top:10px;">
+        <select class="status-select" data-id="${s.id}" style="padding:6px 8px; font-size:0.8rem; width:auto;">
+          ${Object.entries(statusLabels).map(([val, label]) => `<option value="${val}" ${s.status === val ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+        ${isOwner ? `<button type="button" class="link-btn delete-submission-btn" data-id="${s.id}" style="font-size:0.8rem; padding:6px 12px;">Delete</button>` : ''}
+      </div>
+    ` : '';
+
+    const checkbox = projectId
+      ? `<input type="checkbox" class="submission-checkbox" data-id="${s.id}" style="margin-right:10px; width:16px; height:16px; accent-color: var(--accent); vertical-align:middle;">`
+      : '';
+
+    return `
+      <div class="submission-row status-${s.status}">
+        <div class="who-line">${checkbox}${who} · ${when} <span class="badge status-badge-${s.status}" style="margin-left:6px;">${statusLabels[s.status] || s.status}</span></div>
+        ${body}
+        ${controls}
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.show-more-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const span = btn.previousElementSibling;
+      const expanded = span.dataset.expanded === 'true';
+      span.textContent = expanded ? span.dataset.truncated : span.dataset.full;
+      span.dataset.expanded = expanded ? 'false' : 'true';
+      btn.textContent = expanded ? 'Show more' : 'Show less';
+    });
+  });
+
+  if (projectId) {
+    list.querySelectorAll('.status-select').forEach(sel => {
+      sel.addEventListener('change', () => handleStatusChange(projectId, parseInt(sel.dataset.id), sel.value));
+    });
+    list.querySelectorAll('.delete-submission-btn').forEach(btn => {
+      btn.addEventListener('click', () => handleDeleteSubmission(projectId, parseInt(btn.dataset.id)));
+    });
+    list.querySelectorAll('.submission-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const id = parseInt(cb.dataset.id);
+        if (cb.checked) selectedSubmissionIds.add(id);
+        else selectedSubmissionIds.delete(id);
+        renderBulkActionsBar(projectId, isOwner);
+      });
+    });
+  }
+}
+
+async function handleStatusChange(projectId, submissionId, status) {
+  const res = await fetch(`/api/projects/${projectId}/submissions/${submissionId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) {
+    alert('Could not update status — please try again.');
+  }
+  await loadStatusCountsAndRenderPills(projectId);
+  await loadAndRenderSubmissions(projectId);
+}
+
+async function handleDeleteSubmission(projectId, submissionId) {
+  const confirmed = window.confirm('Delete this submission? This can\'t be undone.');
+  if (!confirmed) return;
+
+  const res = await fetch(`/api/projects/${projectId}/submissions/${submissionId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    alert('Could not delete this submission — please try again.');
+    return;
+  }
+  await loadStatusCountsAndRenderPills(projectId);
+  await loadAndRenderSubmissions(projectId);
+  await loadMyProjects();
+}
+
+// ---- Users tab (admin only) ----
+
+function renderUsersView() {
+  activeTab = 'users';
+  card.innerHTML = `
+    ${renderTopBar()}
+    ${renderTabs()}
+    <h1>All users</h1>
+    <p class="subtitle">Promote, disable, or remove accounts.</p>
+    <div class="project-list" id="user-list"></div>
+  `;
+  bindChrome();
+
+  const list = document.getElementById('user-list');
+  if (allUsers.length === 0) {
+    list.innerHTML = `<div class="empty-state">No users yet.</div>`;
+    return;
+  }
+
+  list.innerHTML = allUsers.map(u => {
+    const isSelf = u.id === currentUser.id;
+    const roleBadge = u.role === 'admin'
+      ? `<span class="badge">Admin</span>`
+      : `<span class="badge badge-muted">Owner</span>`;
+    const statusBadge = u.is_active
+      ? ''
+      : `<span class="badge badge-error">Disabled</span>`;
+    const joined = new Date(u.created_at).toLocaleDateString();
+
+    return `
+      <div class="user-row">
+        <div class="user-row-info">
+          <div class="user-row-email">${escapeHtml(u.name)} ${roleBadge} ${statusBadge}</div>
+          <div class="user-row-meta">@${escapeHtml(u.username)} · ${escapeHtml(u.email)} · ${u.project_count} form${u.project_count === 1 ? '' : 'es'} · joined ${joined}${u.totp_enabled ? ' · 2FA on' : ''}${isSelf ? ' · this is you' : ''}</div>
+        </div>
+        <div class="project-row-actions">
+          ${isSelf ? '' : `
+            <button class="link-btn role-btn" data-id="${u.id}" data-role="${u.role}">${u.role === 'admin' ? 'Make owner' : 'Make admin'}</button>
+            <button class="link-btn active-btn" data-id="${u.id}" data-active="${u.is_active}">${u.is_active ? 'Disable' : 'Enable'}</button>
+            <button class="link-btn reset-password-btn" data-id="${u.id}" data-name="${escapeAttr(u.name)}">Reset password</button>
+            <button class="link-btn delete-user-btn" data-id="${u.id}" data-email="${escapeAttr(u.email)}">Delete</button>
+          `}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.role-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const newRole = btn.dataset.role === 'admin' ? 'owner' : 'admin';
+      handleUserUpdate(parseInt(btn.dataset.id), { role: newRole });
+    });
+  });
+  list.querySelectorAll('.active-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const newActive = btn.dataset.active !== 'true';
+      handleUserUpdate(parseInt(btn.dataset.id), { is_active: newActive });
+    });
+  });
+  list.querySelectorAll('.reset-password-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleAdminResetPassword(parseInt(btn.dataset.id), btn.dataset.name));
+  });
+  list.querySelectorAll('.delete-user-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleUserDelete(parseInt(btn.dataset.id), btn.dataset.email));
+  });
+}
+
+async function handleAdminResetPassword(userId, name) {
+  const confirmed = window.confirm(`Reset ${name}'s password? They'll be logged out everywhere, and you'll need to send them the new temporary password yourself.`);
+  if (!confirmed) return;
+
+  const res = await fetch(`/api/admin/users/${userId}/reset-password`, { method: 'POST' });
+  if (!res.ok) {
+    alert('Could not reset this password — please try again.');
+    return;
+  }
+  const data = await res.json();
+  window.prompt(
+    `Temporary password for ${name} (copy this now — it won't be shown again):`,
+    data.temporary_password
+  );
+}
+
+async function handleUserUpdate(userId, payload) {
+  const res = await fetch(`/api/admin/users/${userId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    alert(data.detail || 'Could not update this user.');
+    return;
+  }
+  await loadUsers();
+  renderUsersView();
+}
+
+async function handleUserDelete(userId, email) {
+  const confirmed = window.confirm(`Delete ${email}? This permanently deletes their account and all their forms and submissions. This can't be undone.`);
+  if (!confirmed) return;
+
+  const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    alert(data.detail || 'Could not delete this user.');
+    return;
+  }
+  await Promise.all([loadUsers(), loadAllProjects()]);
+  renderUsersView();
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return escapeHtml(str).replace(/"/g, '&quot;');
+}
+
+init();
+</script>
+
+</body>
+</html>

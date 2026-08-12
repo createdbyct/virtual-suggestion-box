@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create your account — Virtual Suggestion Box</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/theme.js"></script>
+</head>
+<body>
+
+<div class="card" id="card">
+  <a href="/" style="font-family:'Fraunces',serif; font-weight:600; font-size:0.9rem; color:var(--muted); text-decoration:none; display:inline-block; margin-bottom:8px;">&larr; Virtual Suggestion Box</a>
+  <div class="stamp">SIGN UP</div>
+  <p class="eyebrow">Form owner account</p>
+  <h1>Create your account</h1>
+  <p class="subtitle">Make forms, get shareable links, and see what comes in.</p>
+
+  <form id="register-form">
+    <label for="name">Full name</label>
+    <input type="text" id="name" required>
+
+    <label for="username">Username</label>
+    <input type="text" id="username" required minlength="3" maxlength="30" pattern="[a-zA-Z0-9_-]+" placeholder="letters, numbers, _ or -">
+
+    <label for="email">Email</label>
+    <input type="email" id="email" required>
+
+    <label for="password">Password <span class="hint">(at least 8 characters)</span></label>
+    <input type="password" id="password" required minlength="8">
+
+    <p class="error-msg" id="error-msg"></p>
+    <button type="submit" id="submit-btn">Create account</button>
+  </form>
+
+  <p class="timestamp" style="text-align:center; margin-top:18px;">
+    Already have an account? <a href="/login" style="color: var(--accent);">Log in</a>
+  </p>
+</div>
+
+<script>
+document.getElementById('register-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById('error-msg');
+  const btn = document.getElementById('submit-btn');
+  errorEl.classList.remove('visible');
+
+  const payload = {
+    name: document.getElementById('name').value.trim(),
+    username: document.getElementById('username').value.trim(),
+    email: document.getElementById('email').value.trim(),
+    password: document.getElementById('password').value,
+  };
+
+  btn.disabled = true;
+  btn.textContent = 'Creating…';
+
+  let res;
+  try {
+    res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    showError('Network error — please try again.');
+    return;
+  }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    showError(data.detail || 'Something went wrong.');
+    return;
+  }
+
+  window.location.href = '/dashboard';
+});
+
+function showError(msg) {
+  const errorEl = document.getElementById('error-msg');
+  const btn = document.getElementById('submit-btn');
+  errorEl.textContent = msg;
+  errorEl.classList.add('visible');
+  btn.disabled = false;
+  btn.textContent = 'Create account';
+}
+</script>
+
+</body>
+</html>
