@@ -105,6 +105,12 @@ python3 promote_admin.py your@email.com superadmin
 ```
 Regular admins can't view, disable, delete, or reset the password of a superadmin's account — only another superadmin can. This is enforced server-side, not just hidden in the UI.
 
+## Backups (superadmin only, via Site Settings)
+`/dashboard` → **Site Settings** → **Backups**:
+- **Export full backup** — downloads every user, form, submission, nominee, share, recovery code, and site setting as structured JSON. Deliberately *not* a raw copy of the `.db` file — a raw file copy wouldn't survive a schema change (new columns/tables), which is exactly the situation this is meant to protect against. Export reads through the current models; import writes through the current models. As long as you export before wiping and import after the new schema is up, this works across updates.
+- **Import a backup** — wipes every user, form, submission, and setting currently in the database and replaces it all with the file's contents, preserving the original IDs (so foreign key relationships stay intact). Sessions and password-reset tokens are intentionally excluded from both export and import; everyone (including whoever's doing the import) gets logged out and has to log back in afterward.
+- See `install.md` for the exact "export → wipe → git pull → import" sequence when deploying an update that changes the schema.
+
 ## Account management (admin only, via the Users tab)
 - Promote/demote between owner and admin
 - Disable/enable an account — disabling immediately invalidates that user's active session too, not just future logins

@@ -1,13 +1,16 @@
 # Deploying Virtual Suggestion Box on a Raspberry Pi
 
-Tested against a Pi 3B running headless (Raspberry Pi OS Lite, 64-bit), but
-these steps work on any Pi. Replace `yourusername`, `suggestion-pi`, and
+Written for a Pi 2 Model B v1.1 (BCM2836 chip — **32-bit only**), running
+headless Raspberry Pi OS Lite. If you're on different hardware that
+supports 64-bit (Pi 3/4/5, or a Pi 2 v1.2 with the BCM2837 chip), swap
+the OS choice in step 1 for the 64-bit build — everything else is
+identical either way. Replace `yourusername`, `suggestion-pi`, and
 `suggestions.yourdomain.com` with your actual values throughout.
 
 ## 1. Flash the OS
 
 Use **Raspberry Pi Imager** on your Mac:
-- Choose **Raspberry Pi OS Lite (64-bit)** — no desktop needed for a headless server
+- Choose **Raspberry Pi OS Lite (32-bit)** — your v1.1 board's BCM2836 chip can only run 32-bit, the 64-bit image won't boot on it. Lite means no desktop, headless server only.
 - Click the gear icon (Advanced options) before writing:
   - Set hostname (e.g. `suggestion-pi`)
   - Enable SSH, set a username/password
@@ -142,11 +145,28 @@ python3 promote_admin.py your@email.com superadmin
 
 ## Updating the app later
 
+**Before pulling any update that changes the schema** (new columns/tables —
+this has happened with nearly every feature added so far), export a
+backup first: log in as your superadmin account → Site Settings →
+**Export full backup**. This downloads a JSON file with every user, form,
+submission, and setting — not a raw copy of the `.db` file, since that
+wouldn't survive a schema change anyway.
+
 ```bash
 cd ~/virtual-suggestion-box
 git pull
+rm -f suggestionbox.db   # only if the update actually changed the schema
 sudo systemctl restart suggestion-box
 ```
+
+If you wiped the database: register a fresh temporary account at
+`/register`, promote it to superadmin (`python3 promote_admin.py
+temp@email.com superadmin`), log in, then go to Site Settings → **Import
+a backup** and select the file you exported earlier. This restores
+everything — including your real account with its original password —
+and wipes the temporary bootstrap account in the process. You'll be
+logged out automatically once the import finishes; log back in with your
+real account.
 
 ## Troubleshooting
 

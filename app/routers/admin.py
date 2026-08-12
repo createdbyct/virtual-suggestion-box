@@ -1,17 +1,23 @@
 """
 Admin-only endpoints — see every owner's forms and submissions, and
 manage user accounts (promote/demote, disable/enable, delete, reset
-password).
+password). Superadmin-only: full data export/import (see bottom of file).
 """
+import datetime
+import json
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..auth import destroy_all_sessions_for_user, hash_password, require_admin
+from ..auth import destroy_all_sessions_for_user, hash_password, require_admin, require_superadmin
 from ..database import get_db
-from ..models import Project, Submission, User
+from ..models import (
+    Project, ProjectShare, Submission, Nominee, RecoveryCode,
+    SiteSettings, AuthSession, PasswordResetToken, User,
+)
 from .projects import build_submissions_csv
 from ..schemas import (
     ProjectAdminOut, SubmissionOut, UserAdminOut, UserUpdateIn,
@@ -19,6 +25,8 @@ from ..schemas import (
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+EXPORT_VERSION = 1
 
 
 @router.get("/projects", response_model=list[ProjectAdminOut])
@@ -147,3 +155,176 @@ def admin_reset_password(user_id: int, admin: User = Depends(require_admin), db:
     destroy_all_sessions_for_user(db, target.id)
     db.commit()
     return AdminResetPasswordOut(temporary_password=temp_password)
+
+
+# ---- Full data export/import (superadmin only) ----
+#
+# This exists specifically because of schema changes: every time a new
+# column or table shows up in models.py, the SQLite file has to be wiped
+# and recreated (SQLAlchemy's create_all() only creates missing tables —
+# it never alters existing ones). A raw copy of the .db file wouldn't
+# survive that; it'd just be missing whatever the new schema expects.
+#
+# So instead: export walks the *current* ORM models and writes structured
+# JSON, and import reads that JSON back through the *current* models too.
+# As long as you export before wiping and import after the fresh schema is
+# up, this works across schema changes — new nullable columns just fall
+# back to their model defaults on old backups, since every field read
+# below uses .get() rather than assuming it exists.
+#
+# Sessions and password-reset tokens are intentionally NOT included —
+# they're short-lived by design, and forcing a fresh login after a
+# restore is expected, not a bug.
+
+def _iso(dt):
+    return dt.isoformat() if dt else None
+
+
+def _parse_dt(s):
+    return datetime.datetime.fromisoformat(s) if s else None
+
+
+@router.get("/export")
+def export_data(superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    users = db.query(User).all()
+    projects = db.query(Project).all()
+    shares = db.query(ProjectShare).all()
+    submissions = db.query(Submission).all()
+    nominees = db.query(Nominee).all()
+    recovery_codes = db.query(RecoveryCode).all()
+    settings = db.query(SiteSettings).filter(SiteSettings.id == 1).first()
+
+    data = {
+        "export_version": EXPORT_VERSION,
+        "exported_at": _iso(datetime.datetime.utcnow()),
+        "users": [
+            {
+                "id": u.id, "name": u.name, "username": u.username, "email": u.email,
+                "password_hash": u.password_hash, "role": u.role, "is_active": u.is_active,
+                "totp_secret": u.totp_secret, "totp_enabled": u.totp_enabled,
+                "created_at": _iso(u.created_at),
+            } for u in users
+        ],
+        "projects": [
+            {
+                "id": p.id, "owner_id": p.owner_id, "title": p.title, "type": p.type,
+                "slug": p.slug, "created_at": _iso(p.created_at),
+            } for p in projects
+        ],
+        "project_shares": [
+            {"id": s.id, "project_id": s.project_id, "user_id": s.user_id, "created_at": _iso(s.created_at)}
+            for s in shares
+        ],
+        "submissions": [
+            {
+                "id": s.id, "project_id": s.project_id, "suggestion_text": s.suggestion_text,
+                "nomination_reason": s.nomination_reason, "submitter_name": s.submitter_name,
+                "submitter_email": s.submitter_email, "is_anonymous": s.is_anonymous,
+                "edit_token": s.edit_token, "edit_expires_at": _iso(s.edit_expires_at),
+                "status": s.status, "created_at": _iso(s.created_at),
+            } for s in submissions
+        ],
+        "nominees": [
+            {"id": n.id, "submission_id": n.submission_id, "name": n.name, "role": n.role}
+            for n in nominees
+        ],
+        "recovery_codes": [
+            {
+                "id": r.id, "user_id": r.user_id, "code_hash": r.code_hash,
+                "used": r.used, "created_at": _iso(r.created_at),
+            } for r in recovery_codes
+        ],
+        "site_settings": {
+            "footer_text": settings.footer_text,
+            "footer_link_url": settings.footer_link_url,
+            "dark_mode_enabled": settings.dark_mode_enabled,
+        } if settings else None,
+    }
+
+    filename = f"virtual-suggestion-box-backup-{datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.json"
+    return Response(
+        content=json.dumps(data, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/import")
+def import_data(payload: dict = Body(...), superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    if "users" not in payload:
+        raise HTTPException(status_code=400, detail="This doesn't look like a valid backup file")
+
+    # Wipe everything first — children before parents, to respect FK
+    # constraints. This also clears every session (including the one doing
+    # the import), since post-import the current session's user_id may no
+    # longer correspond to the same account.
+    db.query(Nominee).delete()
+    db.query(RecoveryCode).delete()
+    db.query(Submission).delete()
+    db.query(ProjectShare).delete()
+    db.query(Project).delete()
+    db.query(AuthSession).delete()
+    db.query(PasswordResetToken).delete()
+    db.query(User).delete()
+    db.query(SiteSettings).delete()
+    db.commit()
+
+    for u in payload.get("users", []):
+        db.add(User(
+            id=u["id"], name=u["name"], username=u["username"], email=u["email"],
+            password_hash=u["password_hash"], role=u.get("role", "owner"),
+            is_active=u.get("is_active", True), totp_secret=u.get("totp_secret"),
+            totp_enabled=u.get("totp_enabled", False), created_at=_parse_dt(u.get("created_at")),
+        ))
+    db.commit()
+
+    for p in payload.get("projects", []):
+        db.add(Project(
+            id=p["id"], owner_id=p["owner_id"], title=p["title"], type=p["type"],
+            slug=p["slug"], created_at=_parse_dt(p.get("created_at")),
+        ))
+    db.commit()
+
+    for s in payload.get("project_shares", []):
+        db.add(ProjectShare(
+            id=s["id"], project_id=s["project_id"], user_id=s["user_id"],
+            created_at=_parse_dt(s.get("created_at")),
+        ))
+    db.commit()
+
+    for s in payload.get("submissions", []):
+        db.add(Submission(
+            id=s["id"], project_id=s["project_id"], suggestion_text=s.get("suggestion_text"),
+            nomination_reason=s.get("nomination_reason"), submitter_name=s.get("submitter_name"),
+            submitter_email=s.get("submitter_email"), is_anonymous=s.get("is_anonymous", False),
+            edit_token=s.get("edit_token"), edit_expires_at=_parse_dt(s.get("edit_expires_at")),
+            status=s.get("status", "new"), created_at=_parse_dt(s.get("created_at")),
+        ))
+    db.commit()
+
+    for n in payload.get("nominees", []):
+        db.add(Nominee(id=n["id"], submission_id=n["submission_id"], name=n["name"], role=n.get("role")))
+    db.commit()
+
+    for r in payload.get("recovery_codes", []):
+        db.add(RecoveryCode(
+            id=r["id"], user_id=r["user_id"], code_hash=r["code_hash"],
+            used=r.get("used", False), created_at=_parse_dt(r.get("created_at")),
+        ))
+    db.commit()
+
+    settings_data = payload.get("site_settings")
+    if settings_data:
+        db.add(SiteSettings(
+            id=1, footer_text=settings_data.get("footer_text"),
+            footer_link_url=settings_data.get("footer_link_url"),
+            dark_mode_enabled=settings_data.get("dark_mode_enabled", True),
+        ))
+        db.commit()
+
+    return {
+        "status": "imported",
+        "users": len(payload.get("users", [])),
+        "projects": len(payload.get("projects", [])),
+        "submissions": len(payload.get("submissions", [])),
+    }

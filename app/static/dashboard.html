@@ -1378,10 +1378,80 @@ async function renderSiteSettingsView() {
       <p class="error-msg" id="site-settings-error"></p>
       <button type="submit" id="site-settings-save-btn" style="margin-top:24px;">Save settings</button>
     </form>
+
+    <p class="section-title" style="margin-top:32px;">Backups</p>
+    <p class="hint" style="display:block; margin-bottom:14px;">Every user, form, submission, and setting — as structured data, not a raw database file, so it still works after an update changes the schema. Export before pulling any update that requires wiping the database.</p>
+
+    <button type="button" class="link-btn" id="export-backup-btn" style="margin-bottom:20px;">⬇ Export full backup</button>
+
+    <div class="optional-fields">
+      <label for="import-file-input">Import a backup</label>
+      <p class="hint" style="display:block; margin-bottom:8px;">This <strong>replaces everything currently in the database</strong> with the contents of the file. Only use this right after a fresh install, before real data accumulates again.</p>
+      <input type="file" id="import-file-input" accept="application/json">
+      <p class="error-msg" id="import-error"></p>
+      <button type="button" id="import-backup-btn" style="margin-top:14px; background: var(--error);">Import and replace everything</button>
+    </div>
   `;
 
   bindChrome();
   document.getElementById('site-settings-form').addEventListener('submit', handleSaveSiteSettings);
+  document.getElementById('export-backup-btn').addEventListener('click', () => {
+    window.location.href = '/api/admin/export';
+  });
+  document.getElementById('import-backup-btn').addEventListener('click', handleImportBackup);
+}
+
+async function handleImportBackup() {
+  const errorEl = document.getElementById('import-error');
+  const btn = document.getElementById('import-backup-btn');
+  errorEl.classList.remove('visible');
+
+  const fileInput = document.getElementById('import-file-input');
+  const file = fileInput.files[0];
+  if (!file) {
+    errorEl.textContent = 'Choose a backup file first.';
+    errorEl.classList.add('visible');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    'This will permanently delete every user, form, submission, and setting currently in the database, and replace it all with the contents of this file. This cannot be undone. Continue?'
+  );
+  if (!confirmed) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Importing…';
+
+  let backup;
+  try {
+    const text = await file.text();
+    backup = JSON.parse(text);
+  } catch {
+    errorEl.textContent = 'That file isn\'t valid JSON.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Import and replace everything';
+    return;
+  }
+
+  const res = await fetch('/api/admin/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(backup),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || 'Import failed.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Import and replace everything';
+    return;
+  }
+
+  const result = await res.json();
+  alert(`Import complete: ${result.users} users, ${result.projects} forms, ${result.submissions} submissions restored.\n\nYour session was cleared as part of the import — you'll need to log in again.`);
+  window.location.href = '/login';
 }
 
 async function handleSaveSiteSettings(e) {
