@@ -10,6 +10,7 @@
 </head>
 <body>
 
+<a href="/" class="page-brand-link">Virtual Suggestion Box</a>
 <div class="card" id="card">
   <p class="subtitle">Loading…</p>
 </div>
@@ -79,18 +80,27 @@ function renderForm(form) {
         ` : ''}
       </div>
 
-      <div class="optional-fields">
-        <label for="submitter_name">Your name <span class="hint">(optional — leave blank to stay anonymous)</span></label>
+      <div class="optional-fields hidden" id="identity-fields">
+        <label for="submitter_name">Your name <span class="hint">(optional)</span></label>
         <input type="text" id="submitter_name">
 
         <label for="submitter_email">Your email <span class="hint">(optional — lets you edit within 24hrs)</span></label>
         <input type="email" id="submitter_email">
       </div>
+      <button type="button" class="link-btn" id="show-identity-btn" style="margin-top:14px;">+ Add your name and email</button>
 
       <p class="error-msg" id="error-msg"></p>
       <button type="submit" id="submit-btn">Submit</button>
     </form>
+
+    <button type="button" class="link-btn" id="share-form-btn" style="width:100%; justify-content:center; margin-top:14px;">🔗 Share this form</button>
   `;
+
+  document.getElementById('show-identity-btn').addEventListener('click', (e) => {
+    document.getElementById('identity-fields').classList.remove('hidden');
+    e.target.remove();
+  });
+  document.getElementById('share-form-btn').addEventListener('click', handleShareForm);
 
   if (showNomination) {
     addNomineeRow();
@@ -244,6 +254,42 @@ function stampText(text, maxLen = 20) {
   const upper = text.toUpperCase();
   const truncated = upper.length > maxLen ? upper.slice(0, maxLen - 1).trimEnd() + '…' : upper;
   return escapeHtml(truncated);
+}
+
+function showToast(message) {
+  let toast = document.getElementById('toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast';
+    toast.className = 'toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('visible');
+  clearTimeout(toast._hideTimer);
+  toast._hideTimer = setTimeout(() => toast.classList.remove('visible'), 2200);
+}
+
+async function handleShareForm() {
+  const url = window.location.href;
+  const title = document.querySelector('h1') ? document.querySelector('h1').textContent : 'Virtual Suggestion Box';
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, url });
+    } catch (err) {
+      // AbortError just means the person cancelled the native share sheet —
+      // not an actual failure, nothing to show them.
+      if (err.name !== 'AbortError') {
+        navigator.clipboard.writeText(url);
+        showToast('Link copied — ready to share');
+      }
+    }
+    return;
+  }
+
+  navigator.clipboard.writeText(url);
+  showToast('Link copied — ready to share');
 }
 
 function escapeHtml(str) {

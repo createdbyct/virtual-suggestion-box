@@ -11,6 +11,7 @@
 </head>
 <body>
 
+<a href="/" class="page-brand-link wide">Virtual Suggestion Box</a>
 <div class="card card-wide" id="card">
   <p class="subtitle">Loading…</p>
 </div>
@@ -98,9 +99,12 @@ function renderTopBar() {
 
 function tabDefs() {
   const tabs = [{ id: 'my-forms', label: 'My Forms' }];
-  if (currentUser.role === 'admin') {
+  if (currentUser.role === 'admin' || currentUser.role === 'superadmin') {
     tabs.push({ id: 'all-forms', label: 'All Forms' });
     tabs.push({ id: 'users', label: 'Users' });
+  }
+  if (currentUser.role === 'superadmin') {
+    tabs.push({ id: 'site-settings', label: 'Site Settings' });
   }
   return tabs;
 }
@@ -129,6 +133,7 @@ function bindChrome() {
 function renderCurrentTab() {
   if (activeTab === 'all-forms') renderAllFormsView();
   else if (activeTab === 'users') renderUsersView();
+  else if (activeTab === 'site-settings') renderSiteSettingsView();
   else renderMyFormsView();
 }
 
@@ -1269,7 +1274,16 @@ function renderUsersView() {
 
   list.innerHTML = allUsers.map(u => {
     const isSelf = u.id === currentUser.id;
-    const roleBadge = u.role === 'admin'
+    const isTargetSuperadmin = u.role === 'superadmin';
+    const viewerIsSuperadmin = currentUser.role === 'superadmin';
+    // Only a superadmin can manage another superadmin's account at all —
+    // matches the server-side rule exactly, so this never shows a button
+    // that would just 403 when clicked.
+    const canManage = !isSelf && (!isTargetSuperadmin || viewerIsSuperadmin);
+
+    const roleBadge = u.role === 'superadmin'
+      ? `<span class="badge" style="border-color:#B8862E; color:#B8862E;">Super Admin</span>`
+      : u.role === 'admin'
       ? `<span class="badge">Admin</span>`
       : `<span class="badge badge-muted">Owner</span>`;
     const statusBadge = u.is_active
@@ -1284,12 +1298,12 @@ function renderUsersView() {
           <div class="user-row-meta">@${escapeHtml(u.username)} · ${escapeHtml(u.email)} · ${u.project_count} form${u.project_count === 1 ? '' : 'es'} · joined ${joined}${u.totp_enabled ? ' · 2FA on' : ''}${isSelf ? ' · this is you' : ''}</div>
         </div>
         <div class="project-row-actions">
-          ${isSelf ? '' : `
-            <button class="link-btn role-btn" data-id="${u.id}" data-role="${u.role}">${u.role === 'admin' ? 'Make owner' : 'Make admin'}</button>
+          ${canManage ? `
+            ${isTargetSuperadmin ? '' : `<button class="link-btn role-btn" data-id="${u.id}" data-role="${u.role}">${u.role === 'admin' ? 'Make owner' : 'Make admin'}</button>`}
             <button class="link-btn active-btn" data-id="${u.id}" data-active="${u.is_active}">${u.is_active ? 'Disable' : 'Enable'}</button>
             <button class="link-btn reset-password-btn" data-id="${u.id}" data-name="${escapeAttr(u.name)}">Reset password</button>
             <button class="link-btn delete-user-btn" data-id="${u.id}" data-email="${escapeAttr(u.email)}">Delete</button>
-          `}
+          ` : ''}
         </div>
       </div>
     `;
@@ -1329,6 +1343,80 @@ async function handleAdminResetPassword(userId, name) {
     `Temporary password for ${name} (copy this now — it won't be shown again):`,
     data.temporary_password
   );
+}
+
+// ---- Site Settings tab (superadmin only) ----
+
+async function renderSiteSettingsView() {
+  activeTab = 'site-settings';
+  card.innerHTML = `${renderTopBar()}${renderTabs()}<p class="subtitle">Loading…</p>`;
+
+  const res = await fetch('/api/settings');
+  const settings = res.ok ? await res.json() : { footer_text: '', footer_link_url: '', dark_mode_enabled: true };
+
+  card.innerHTML = `
+    ${renderTopBar()}
+    ${renderTabs()}
+    <h1>Site settings</h1>
+    <p class="subtitle">Configuration that applies across the whole site, not just your account.</p>
+
+    <form id="site-settings-form">
+      <p class="section-title">Footer credit</p>
+      <label for="footer-text">Footer text <span class="hint">(shown on the homepage — leave blank to hide it)</span></label>
+      <input type="text" id="footer-text" value="${escapeAttr(settings.footer_text || '')}" placeholder="e.g. Built by Christian Taylor">
+
+      <label for="footer-link">Link URL <span class="hint">(optional — e.g. your resume or portfolio)</span></label>
+      <input type="text" id="footer-link" value="${escapeAttr(settings.footer_link_url || '')}" placeholder="https://christian-taylor.com">
+
+      <p class="section-title" style="margin-top:28px;">Dark mode</p>
+      <div class="checkbox-row">
+        <input type="checkbox" id="dark-mode-enabled" ${settings.dark_mode_enabled ? 'checked' : ''}>
+        <label for="dark-mode-enabled">Allow visitors to use dark mode</label>
+      </div>
+      <p class="hint" style="display:block; margin-top:6px;">Unchecking this hides the theme toggle everywhere and forces light mode for every visitor, regardless of their own preference.</p>
+
+      <p class="error-msg" id="site-settings-error"></p>
+      <button type="submit" id="site-settings-save-btn" style="margin-top:24px;">Save settings</button>
+    </form>
+  `;
+
+  bindChrome();
+  document.getElementById('site-settings-form').addEventListener('submit', handleSaveSiteSettings);
+}
+
+async function handleSaveSiteSettings(e) {
+  e.preventDefault();
+  const errorEl = document.getElementById('site-settings-error');
+  const btn = document.getElementById('site-settings-save-btn');
+  errorEl.classList.remove('visible');
+
+  const payload = {
+    footer_text: document.getElementById('footer-text').value.trim() || null,
+    footer_link_url: document.getElementById('footer-link').value.trim() || null,
+    dark_mode_enabled: document.getElementById('dark-mode-enabled').checked,
+  };
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const res = await fetch('/api/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || 'Something went wrong.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Save settings';
+    return;
+  }
+
+  showToast('Site settings saved');
+  btn.disabled = false;
+  btn.textContent = 'Save settings';
 }
 
 async function handleUserUpdate(userId, payload) {
