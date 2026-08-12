@@ -23,19 +23,13 @@ A dark mode toggle (🌙/☀️) sits in the top-right corner of every page.
 
 ## First-time setup
 1. Run the server, go to `/register`, create your account.
-2. There's no public path to becoming an admin — promote yourself manually:
+2. There's no public path to becoming an admin — promote yourself with `promote_admin.py`:
 ```bash
-python3 -c "
-from app.database import SessionLocal
-from app.models import User
-db = SessionLocal()
-user = db.query(User).filter(User.email == 'YOUR_EMAIL_HERE').first()
-user.role = 'admin'
-db.commit()
-print(f'{user.email} is now admin')
-"
+python3 promote_admin.py your@email.com admin
 ```
 3. Reload `/dashboard` — you'll see the "All Forms" and "Users" tabs alongside your own forms.
+
+There's a tier above admin too — see **Super admin & site settings** below.
 
 ## Two-factor authentication
 From `/dashboard` → **Account** → **Enable 2FA**:
@@ -95,6 +89,21 @@ A form shows up in everyone's "My Forms" list who has any relationship to it —
 
 ## Editing your profile
 From `/dashboard` → **Account** → **Edit name**. Username and email aren't editable yet (kept simple to avoid uniqueness-collision handling on those fields for now).
+
+## Super admin & site settings
+A tier above regular admin, for whoever actually runs the site — currently
+the only thing it controls is site-wide config, via a **Site Settings** tab
+that only appears for this role:
+- **Footer credit** — text and an optional link shown at the bottom of the homepage (e.g. "Built by Christian Taylor" linking to a resume/portfolio site). Leave the text blank to hide it entirely.
+- **Dark mode on/off, site-wide** — disabling it removes the theme toggle from every page and forces light mode for every visitor, overriding their own browser/system preference.
+
+A superadmin also has every regular admin capability (All Forms, Users tab, etc.) plus their own forms like any owner — it's a strict superset, not a separate parallel role.
+
+There's no path to this role through the app at all, not even for another admin — it's promoted the same way as admin, via the script, just with the role argument:
+```bash
+python3 promote_admin.py your@email.com superadmin
+```
+Regular admins can't view, disable, delete, or reset the password of a superadmin's account — only another superadmin can. This is enforced server-side, not just hidden in the UI.
 
 ## Account management (admin only, via the Users tab)
 - Promote/demote between owner and admin

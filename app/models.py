@@ -38,7 +38,7 @@ class User(Base):
     projects = relationship("Project", back_populates="owner", cascade="all, delete-orphan")
 
     __table_args__ = (
-        CheckConstraint("role IN ('admin', 'owner')", name="ck_user_role"),
+        CheckConstraint("role IN ('admin', 'owner', 'superadmin')", name="ck_user_role"),
     )
 
 
@@ -165,3 +165,16 @@ class RecoveryCode(Base):
     code_hash = Column(String, nullable=False)
     used = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SiteSettings(Base):
+    """Singleton row (always id=1) for site-wide config — superadmin only.
+    Explicit typed columns rather than a generic key-value store, matching
+    the rest of this codebase; add a column if a new setting shows up."""
+    __tablename__ = "site_settings"
+
+    id = Column(Integer, primary_key=True)
+    footer_text = Column(String, nullable=True)
+    footer_link_url = Column(String, nullable=True)
+    dark_mode_enabled = Column(Boolean, nullable=False, default=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -88,6 +88,12 @@ def update_user(user_id: int, payload: UserUpdateIn, admin: User = Depends(requi
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Superadmin accounts are off-limits to regular admins entirely —
+    # only another superadmin can touch one (and even then, self-protection
+    # below still applies).
+    if target.role == "superadmin" and admin.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Only a super admin can modify a super admin account")
+
     # Prevent an admin from locking themselves out — no self-demotion,
     # no self-deactivation. They can still be changed by a *different* admin.
     if target.id == admin.id:
@@ -116,6 +122,9 @@ def delete_user(user_id: int, admin: User = Depends(require_admin), db: Session 
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
+    if target.role == "superadmin" and admin.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Only a super admin can delete a super admin account")
+
     db.delete(target)  # cascades to their projects, submissions, and nominees
     db.commit()
     return {"status": "deleted"}
@@ -129,6 +138,9 @@ def admin_reset_password(user_id: int, admin: User = Depends(require_admin), db:
     target = db.query(User).filter(User.id == user_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if target.role == "superadmin" and admin.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Only a super admin can reset a super admin's password")
 
     temp_password = secrets.token_urlsafe(9)  # ~12 readable chars
     target.password_hash = hash_password(temp_password)

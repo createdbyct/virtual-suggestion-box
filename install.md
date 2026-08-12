@@ -30,14 +30,12 @@ sudo apt install python3-venv python3-pip git unzip -y
 
 ## 4. Get the app onto the Pi
 
-From your Mac:
+Since it's on GitHub now, clone it directly — this also makes future
+updates trivial (`git pull` + restart, no more scp/zip):
 ```bash
-scp /path/to/suggestion-box.zip yourusername@suggestion-pi.local:~/
-```
-
-Then on the Pi:
-```bash
-unzip suggestion-box.zip && cd suggestion-box
+gh auth login   # one-time, if gh isn't already set up on this Pi
+git clone https://github.com/createdbyct/virtual-suggestion-box.git
+cd virtual-suggestion-box
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -67,7 +65,7 @@ After=network.target
 [Service]
 Type=simple
 User=yourusername
-WorkingDirectory=/home/yourusername/suggestion-box
+WorkingDirectory=/home/yourusername/virtual-suggestion-box
 Environment=COOKIE_SECURE=true
 Environment=PUBLIC_BASE_URL=https://suggestions.yourdomain.com
 Environment=SMTP_HOST=smtp.gmail.com
@@ -75,7 +73,7 @@ Environment=SMTP_PORT=587
 Environment=SMTP_USERNAME=youraddress@gmail.com
 Environment=SMTP_PASSWORD=your-16-char-app-password
 Environment=SMTP_FROM_EMAIL=youraddress@gmail.com
-ExecStart=/home/yourusername/suggestion-box/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 1994
+ExecStart=/home/yourusername/virtual-suggestion-box/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 1994
 Restart=always
 
 [Install]
@@ -132,18 +130,21 @@ TLS certificate from Cloudflare and no router/firewall port forwarding needed.
 ## 8. First account + promote to admin
 
 Visit `/register` at your new domain and create your account, then from the
-Pi, promote yourself to admin:
+Pi, promote yourself:
 ```bash
-cd ~/suggestion-box
+cd ~/virtual-suggestion-box
 source venv/bin/activate
-python3 promote_admin.py your@email.com
+python3 promote_admin.py your@email.com admin
+# or, for the top tier that also controls site-wide settings (footer credit,
+# dark mode on/off) — see README.md:
+python3 promote_admin.py your@email.com superadmin
 ```
 
 ## Updating the app later
 
 ```bash
-cd ~/suggestion-box
-# copy up new files (scp, git pull, however you're syncing changes)
+cd ~/virtual-suggestion-box
+git pull
 sudo systemctl restart suggestion-box
 ```
 

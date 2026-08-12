@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .database import init_db
-from .routers import public, auth, projects, admin
+from .routers import public, auth, projects, admin, settings
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -22,6 +22,7 @@ app.include_router(public.edit_router)
 app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(admin.router)
+app.include_router(settings.router)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

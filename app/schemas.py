@@ -255,6 +255,31 @@ class AdminResetPasswordOut(BaseModel):
     temporary_password: str
 
 
+# ---- Site settings (superadmin only) ----
+
+class SiteSettingsOut(BaseModel):
+    footer_text: Optional[str] = None
+    footer_link_url: Optional[str] = None
+    dark_mode_enabled: bool = True
+
+    class Config:
+        from_attributes = True
+
+
+class SiteSettingsUpdate(BaseModel):
+    footer_text: Optional[str] = None
+    footer_link_url: Optional[str] = None
+    dark_mode_enabled: Optional[bool] = None
+
+    @field_validator("footer_text", "footer_link_url")
+    @classmethod
+    def blank_to_none(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+
 # ---- Sessions ----
 
 class SessionOut(BaseModel):
