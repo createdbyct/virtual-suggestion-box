@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/theme.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
 
@@ -94,6 +95,12 @@ function renderForm(form) {
     </form>
 
     <button type="button" class="link-btn" id="share-form-btn" style="width:100%; justify-content:center; margin-top:14px;">🔗 Share this form</button>
+    <button type="button" class="link-btn" id="show-qr-btn" style="width:100%; justify-content:center; margin-top:10px;">📱 QR code</button>
+    <div class="hidden" id="qr-wrap" style="text-align:center; margin-top:16px;">
+      <div id="qr-code-container" style="display:inline-block; background:#fff; padding:12px; border-radius:8px;"></div>
+      <br>
+      <button type="button" class="link-btn" id="download-qr-btn" style="margin-top:12px;">⬇ Download QR image</button>
+    </div>
   `;
 
   document.getElementById('show-identity-btn').addEventListener('click', (e) => {
@@ -101,6 +108,8 @@ function renderForm(form) {
     e.target.remove();
   });
   document.getElementById('share-form-btn').addEventListener('click', handleShareForm);
+  document.getElementById('show-qr-btn').addEventListener('click', handleToggleQr);
+  document.getElementById('download-qr-btn').addEventListener('click', handleDownloadQr);
 
   if (showNomination) {
     addNomineeRow();
@@ -290,6 +299,48 @@ async function handleShareForm() {
 
   navigator.clipboard.writeText(url);
   showToast('Link copied — ready to share');
+}
+
+let qrRendered = false;
+
+function handleToggleQr() {
+  const wrap = document.getElementById('qr-wrap');
+  const isHidden = wrap.classList.contains('hidden');
+
+  if (!isHidden) {
+    wrap.classList.add('hidden');
+    return;
+  }
+
+  wrap.classList.remove('hidden');
+  if (!qrRendered) {
+    new QRCode(document.getElementById('qr-code-container'), {
+      text: window.location.href,
+      width: 200,
+      height: 200,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+    });
+    qrRendered = true;
+  }
+}
+
+function handleDownloadQr() {
+  const container = document.getElementById('qr-code-container');
+  const canvas = container.querySelector('canvas');
+  const img = container.querySelector('img');
+  const dataUrl = canvas ? canvas.toDataURL('image/png') : (img ? img.src : null);
+  if (!dataUrl) {
+    showToast('QR code not ready yet — try again');
+    return;
+  }
+
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = 'form-qr-code.png';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 function escapeHtml(str) {

@@ -53,7 +53,7 @@ async function init() {
   currentUser = await res.json();
 
   await loadMyProjects();
-  if (currentUser.role === 'admin') {
+  if (currentUser.role === 'admin' || currentUser.role === 'superadmin') {
     await Promise.all([loadAllProjects(), loadUsers()]);
   }
   renderCurrentTab();
@@ -87,7 +87,7 @@ function renderTopBar() {
     <div class="top-bar">
       <div>
         <p class="eyebrow" style="margin-bottom:2px;">Dashboard</p>
-        <span class="who">${escapeHtml(currentUser.name)} · ${escapeHtml(currentUser.username)}${currentUser.role === 'admin' ? ' · admin' : ''}</span>
+        <span class="who">${escapeHtml(currentUser.name)} · ${escapeHtml(currentUser.username)}${currentUser.role === 'admin' ? ' · admin' : ''}${currentUser.role === 'superadmin' ? ' · superadmin' : ''}</span>
       </div>
       <div style="display:flex; gap:8px;">
         <button class="link-btn" id="account-btn">Account</button>
@@ -609,7 +609,7 @@ async function handleCreate(e) {
   }
 
   await loadMyProjects();
-  if (currentUser.role === 'admin') await loadAllProjects();
+  if (currentUser.role === 'admin' || currentUser.role === 'superadmin') await loadAllProjects();
   renderMyFormsView();
 }
 
@@ -941,7 +941,7 @@ async function handleEditSave(e, projectId) {
   }
 
   await loadMyProjects();
-  if (currentUser.role === 'admin') await loadAllProjects();
+  if (currentUser.role === 'admin' || currentUser.role === 'superadmin') await loadAllProjects();
   renderEditPage(projectId);
 }
 
@@ -956,7 +956,7 @@ async function handleDelete(projectId) {
     return;
   }
   await loadMyProjects();
-  if (currentUser.role === 'admin') await loadAllProjects();
+  if (currentUser.role === 'admin' || currentUser.role === 'superadmin') await loadAllProjects();
   renderMyFormsView();
 }
 
@@ -1062,7 +1062,7 @@ async function handleTransferOwnership(e, projectId, projectTitle) {
   }
 
   await loadMyProjects();
-  if (currentUser.role === 'admin') await loadAllProjects();
+  if (currentUser.role === 'admin' || currentUser.role === 'superadmin') await loadAllProjects();
   renderMyFormsView();
 }
 
