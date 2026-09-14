@@ -96,11 +96,6 @@ function renderForm(form) {
 
     <button type="button" class="link-btn" id="share-form-btn" style="width:100%; justify-content:center; margin-top:14px;">🔗 Share this form</button>
     <button type="button" class="link-btn" id="show-qr-btn" style="width:100%; justify-content:center; margin-top:10px;">📱 QR code</button>
-    <div class="hidden" id="qr-wrap" style="text-align:center; margin-top:16px;">
-      <div id="qr-code-container" style="display:inline-block; background:#fff; padding:12px; border-radius:8px;"></div>
-      <br>
-      <button type="button" class="link-btn" id="download-qr-btn" style="margin-top:12px;">⬇ Download QR image</button>
-    </div>
   `;
 
   document.getElementById('show-identity-btn').addEventListener('click', (e) => {
@@ -108,8 +103,10 @@ function renderForm(form) {
     e.target.remove();
   });
   document.getElementById('share-form-btn').addEventListener('click', handleShareForm);
-  document.getElementById('show-qr-btn').addEventListener('click', handleToggleQr);
-  document.getElementById('download-qr-btn').addEventListener('click', handleDownloadQr);
+  document.getElementById('show-qr-btn').addEventListener('click', () => {
+    const titleEl = document.querySelector('h1');
+    showQrModal(window.location.href, titleEl ? titleEl.textContent : 'Form link');
+  });
 
   if (showNomination) {
     addNomineeRow();
@@ -301,46 +298,49 @@ async function handleShareForm() {
   showToast('Link copied — ready to share');
 }
 
-let qrRendered = false;
+function showQrModal(url, title) {
+  const existing = document.getElementById('qr-modal-overlay');
+  if (existing) existing.remove();
 
-function handleToggleQr() {
-  const wrap = document.getElementById('qr-wrap');
-  const isHidden = wrap.classList.contains('hidden');
+  const overlay = document.createElement('div');
+  overlay.id = 'qr-modal-overlay';
+  overlay.className = 'qr-modal-overlay';
+  overlay.innerHTML = `
+    <div class="qr-modal">
+      <button type="button" class="qr-modal-close" id="qr-modal-close" aria-label="Close">×</button>
+      <p class="eyebrow" style="text-align:center;">QR code</p>
+      <h1 style="text-align:center; font-size:1.15rem;">${escapeHtml(title || 'Form link')}</h1>
+      <div id="qr-modal-code" style="display:flex; justify-content:center; margin:18px 0; background:#fff; padding:16px; border-radius:8px;"></div>
+      <button type="button" class="link-btn" id="qr-modal-download" style="width:100%; justify-content:center;">⬇ Download QR image</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
 
-  if (!isHidden) {
-    wrap.classList.add('hidden');
-    return;
-  }
+  new QRCode(document.getElementById('qr-modal-code'), {
+    text: url,
+    width: 200,
+    height: 200,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+  });
 
-  wrap.classList.remove('hidden');
-  if (!qrRendered) {
-    new QRCode(document.getElementById('qr-code-container'), {
-      text: window.location.href,
-      width: 200,
-      height: 200,
-      colorDark: '#000000',
-      colorLight: '#ffffff',
-    });
-    qrRendered = true;
-  }
-}
+  const close = () => overlay.remove();
+  document.getElementById('qr-modal-close').addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
-function handleDownloadQr() {
-  const container = document.getElementById('qr-code-container');
-  const canvas = container.querySelector('canvas');
-  const img = container.querySelector('img');
-  const dataUrl = canvas ? canvas.toDataURL('image/png') : (img ? img.src : null);
-  if (!dataUrl) {
-    showToast('QR code not ready yet — try again');
-    return;
-  }
-
-  const a = document.createElement('a');
-  a.href = dataUrl;
-  a.download = 'form-qr-code.png';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  document.getElementById('qr-modal-download').addEventListener('click', () => {
+    const container = document.getElementById('qr-modal-code');
+    const canvas = container.querySelector('canvas');
+    const img = container.querySelector('img');
+    const dataUrl = canvas ? canvas.toDataURL('image/png') : (img ? img.src : null);
+    if (!dataUrl) return;
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = 'form-qr-code.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
 }
 
 function escapeHtml(str) {

@@ -27,6 +27,19 @@ app.include_router(settings.router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+@app.middleware("http")
+async def no_cache_static_assets(request, call_next):
+    """Browsers were caching CSS/JS aggressively enough that updates
+    required a manual hard-refresh to show up. This forces the browser to
+    always revalidate with the server before using a cached copy —
+    StaticFiles already sets ETag/Last-Modified, so an unchanged file
+    still gets a fast 304, only a genuinely changed one is re-downloaded."""
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
+
+
 @app.get("/")
 def serve_home_page():
     return FileResponse(STATIC_DIR / "home.html")
