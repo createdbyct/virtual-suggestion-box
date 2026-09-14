@@ -32,6 +32,52 @@ function showToast(message) {
   clearTimeout(toast._hideTimer);
   toast._hideTimer = setTimeout(() => toast.classList.remove('visible'), 2200);
 }
+
+function showQrModal(url, title) {
+  const existing = document.getElementById('qr-modal-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'qr-modal-overlay';
+  overlay.className = 'qr-modal-overlay';
+  overlay.innerHTML = `
+    <div class="qr-modal">
+      <button type="button" class="qr-modal-close" id="qr-modal-close" aria-label="Close">×</button>
+      <p class="eyebrow" style="text-align:center;">QR code</p>
+      <h1 style="text-align:center; font-size:1.15rem;">${escapeHtml(title || 'Form link')}</h1>
+      <div id="qr-modal-code" style="display:flex; justify-content:center; margin:18px 0; background:#fff; padding:16px; border-radius:8px;"></div>
+      <button type="button" class="link-btn" id="qr-modal-download" style="width:100%; justify-content:center;">⬇ Download QR image</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  new QRCode(document.getElementById('qr-modal-code'), {
+    text: url,
+    width: 200,
+    height: 200,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+  });
+
+  const close = () => overlay.remove();
+  document.getElementById('qr-modal-close').addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  document.getElementById('qr-modal-download').addEventListener('click', () => {
+    const container = document.getElementById('qr-modal-code');
+    const canvas = container.querySelector('canvas');
+    const img = container.querySelector('img');
+    const dataUrl = canvas ? canvas.toDataURL('image/png') : (img ? img.src : null);
+    if (!dataUrl) return;
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = 'form-qr-code.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+}
+
 let currentUser = null;
 let myProjects = [];
 let allProjects = [];
@@ -547,6 +593,7 @@ function renderMyProjectList() {
           <div class="project-row-actions">
             <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
             <button class="link-btn share-link-btn" data-url="${url}">Share</button>
+            <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(p.title)}">QR code</button>
             <button class="link-btn view-submissions-btn" data-id="${p.id}">View submissions</button>
             ${p.is_owner ? `<button class="link-btn edit-form-btn" data-id="${p.id}">Edit</button>` : ''}
           </div>
@@ -560,6 +607,9 @@ function renderMyProjectList() {
       navigator.clipboard.writeText(btn.dataset.url);
       showToast('Link copied — ready to share');
     });
+  });
+  list.querySelectorAll('.qr-link-btn').forEach(btn => {
+    btn.addEventListener('click', () => showQrModal(btn.dataset.url, btn.dataset.title));
   });
   list.querySelectorAll('.view-submissions-btn').forEach(btn => {
     btn.addEventListener('click', () => renderSubmissionsPage(parseInt(btn.dataset.id)));
@@ -712,6 +762,7 @@ async function renderEditPage(projectId) {
     <h1>${escapeHtml(project.title)} <span class="badge">${typeLabel(project.type)}</span></h1>
     <p class="subtitle" style="font-family:'IBM Plex Mono',monospace; font-size:0.82rem;">${url}</p>
     <button class="link-btn copy-link-btn" data-url="${url}" style="margin-bottom:4px;">Copy link</button>
+    <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(project.title)}" style="margin-bottom:4px;">QR code</button>
 
     <p class="section-title">Form settings</p>
     <form id="edit-form">
@@ -764,6 +815,9 @@ async function renderEditPage(projectId) {
 
   document.getElementById('back-link').addEventListener('click', renderMyFormsView);
   document.querySelectorAll('.copy-link-btn').forEach(btn => btn.addEventListener('click', copyLinkHandler));
+  document.querySelectorAll('.qr-link-btn').forEach(btn => {
+    btn.addEventListener('click', () => showQrModal(btn.dataset.url, btn.dataset.title));
+  });
   bindChrome();
 
   document.getElementById('edit-form').addEventListener('submit', (e) => handleEditSave(e, projectId));
