@@ -198,12 +198,14 @@ card it's protecting against doesn't help if that card fails outright.
 
 ## New-submission notifications
 
-Each form can optionally notify you when someone submits — set from
-that form's **Edit** page:
-- **Slack or Discord webhook URL** — paste either kind of webhook URL, both work with the same field (the payload includes both platforms' expected format).
-- **Notification email** — requires SMTP to be configured (see the systemd service section above); silently does nothing if it isn't.
+Two independent layers, both optional, both fire in the background so a
+slow/failed send never blocks the actual submission:
 
-Both are optional and independent — set either, both, or neither, per form. A failed send (webhook unreachable, email misconfigured) never blocks the actual submission; it's sent in the background after the submitter already has their confirmation.
+**Per-form (set by the form's owner, on its Edit page → Settings tab):**
+- **Slack, Discord, or ntfy.sh webhook URL** — one field works for all three; ntfy.sh URLs (containing `ntfy.sh`) get plain-text POSTs the way ntfy expects, everything else gets a JSON payload Slack/Discord both understand.
+- **Notification email** — requires SMTP to be configured (see above); silently does nothing if it isn't.
+
+**Global (superadmin only, Site Settings → Global notifications):** one webhook URL, plus a checklist of every form across every owner — pick which ones you personally want pinged for. Independent of any per-form settings; a submission on a watched form fires this in addition to whatever the form owner configured, not instead of it.
 
 ## Troubleshooting
 

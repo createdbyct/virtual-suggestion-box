@@ -17,15 +17,25 @@ from ..backup import build_backup_dict
 from ..database import get_db
 from ..models import (
     Project, ProjectShare, Submission, Nominee, RecoveryCode,
-    SiteSettings, AuthSession, PasswordResetToken, User,
+    SiteSettings, WatchedForm, AuthSession, PasswordResetToken, User,
 )
 from .projects import build_submissions_csv
 from ..schemas import (
     ProjectAdminOut, SubmissionOut, UserAdminOut, UserUpdateIn,
-    AdminResetPasswordOut,
+    AdminResetPasswordOut, SiteSettingsAdminOut,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+def _get_or_create_settings(db: Session) -> SiteSettings:
+    settings = db.query(SiteSettings).filter(SiteSettings.id == 1).first()
+    if not settings:
+        settings = SiteSettings(id=1)
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
 
 
 @router.get("/projects", response_model=list[ProjectAdminOut])
@@ -38,12 +48,38 @@ def list_all_projects(admin: User = Depends(require_admin), db: Session = Depend
         .order_by(Project.created_at.desc())
         .all()
     )
+    watched_ids = {w.project_id for w in db.query(WatchedForm).all()}
     result = []
     for project, owner_email, count in rows:
         project.submission_count = count
         project.owner_email = owner_email
+        project.is_watched = project.id in watched_ids
         result.append(project)
     return result
+
+
+@router.post("/projects/{project_id}/watch")
+def toggle_watch_form(project_id: int, watched: bool = Body(embed=True), superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    """Superadmin-only — adds/removes a form from the global notification
+    watch list, independent of who owns the form."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Form not found")
+
+    existing = db.query(WatchedForm).filter(WatchedForm.project_id == project_id).first()
+    if watched and not existing:
+        db.add(WatchedForm(project_id=project_id))
+    elif not watched and existing:
+        db.delete(existing)
+    db.commit()
+    return {"status": "ok", "watched": watched}
+
+
+@router.get("/settings", response_model=SiteSettingsAdminOut)
+def get_admin_settings(superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    """Superadmin's own view of settings — includes last_backup_at and the
+    notification_webhook_url, unlike the public GET /api/settings."""
+    return _get_or_create_settings(db)
 
 
 @router.get("/projects/{project_id}/submissions", response_model=list[SubmissionOut])
@@ -186,6 +222,11 @@ def _parse_dt(s):
 @router.get("/export")
 def export_data(superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
     data = build_backup_dict(db)
+
+    settings = _get_or_create_settings(db)
+    settings.last_backup_at = datetime.datetime.utcnow()
+    db.commit()
+
     filename = f"virtual-suggestion-box-backup-{datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.json"
     return Response(
         content=json.dumps(data, indent=2),

@@ -25,6 +25,7 @@ from pathlib import Path
 
 from app.backup import build_backup_dict
 from app.database import SessionLocal
+from app.models import SiteSettings
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -38,6 +39,13 @@ if __name__ == "__main__":
     db = SessionLocal()
     try:
         data = build_backup_dict(db)
+
+        settings = db.query(SiteSettings).filter(SiteSettings.id == 1).first()
+        if not settings:
+            settings = SiteSettings(id=1)
+            db.add(settings)
+        settings.last_backup_at = datetime.utcnow()
+        db.commit()
     finally:
         db.close()
 

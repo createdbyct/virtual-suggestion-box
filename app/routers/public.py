@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..mailer import is_email_configured, send_email
-from ..models import Project, Submission, Nominee
+from ..models import Project, Submission, Nominee, WatchedForm, SiteSettings
 from ..rate_limit import check_rate_limit, get_client_ip
 from ..schemas import (
     SubmissionCreate, SubmissionEdit, SubmissionOut,
@@ -94,12 +94,17 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
     # Best-effort notifications — fired as background tasks so a slow or
     # failing webhook/email send never adds latency to the submitter's
     # response, and never breaks the submission itself either way.
-    if project.webhook_url or project.notify_email:
+    is_watched = db.query(WatchedForm).filter(WatchedForm.project_id == project.id).first() is not None
+    site_settings = db.query(SiteSettings).filter(SiteSettings.id == 1).first()
+    global_webhook_url = site_settings.notification_webhook_url if (site_settings and is_watched) else None
+
+    if project.webhook_url or project.notify_email or global_webhook_url:
         nominee_names = [n.name for n in payload.nominees] if has_nomination else []
         message = build_submission_message(
             project.title, payload.submitter_name, is_anonymous,
             submission.suggestion_text, submission.nomination_reason, nominee_names,
         )
+        # Per-form, owner-configured channels.
         if project.webhook_url:
             background_tasks.add_task(send_webhook_notification, project.webhook_url, message)
         if project.notify_email and is_email_configured():
@@ -107,6 +112,10 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
                 send_email, project.notify_email,
                 f"New submission — {project.title}", message,
             )
+        # Global, superadmin-configured channel — separate from the above,
+        # fires independently if this form is on the watch list.
+        if global_webhook_url:
+            background_tasks.add_task(send_webhook_notification, global_webhook_url, message)
 
     return SubmissionConfirmation(
         id=submission.id,

@@ -182,4 +182,22 @@ class SiteSettings(Base):
     footer_text = Column(String, nullable=True)
     footer_link_url = Column(String, nullable=True)
     dark_mode_enabled = Column(Boolean, nullable=False, default=True)
+    # Global notification channel (Slack/Discord/ntfy.sh) — separate from
+    # any per-form owner-set webhook_url/notify_email on Project. This one
+    # fires for whichever forms are in WatchedForm, regardless of who owns
+    # them, since only a superadmin can configure it.
+    notification_webhook_url = Column(String, nullable=True)
+    # Set automatically by backup_db.py and by the manual export endpoint —
+    # not user-editable directly.
+    last_backup_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class WatchedForm(Base):
+    """A form the superadmin wants global notifications for. Independent
+    of who owns the form — superadmin sees and can watch any form."""
+    __tablename__ = "watched_forms"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -13,15 +13,25 @@ def send_webhook_notification(webhook_url: str, message: str) -> bool:
     if not webhook_url:
         return False
 
-    # Slack incoming webhooks read "text"; Discord webhooks read "content".
-    # Sending both in one payload means the same URL works for either
-    # platform without the form owner needing to specify which one it is.
-    payload = json.dumps({"text": message, "content": message}).encode("utf-8")
-    req = urllib.request.Request(
-        webhook_url, data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    # ntfy.sh (and self-hosted ntfy instances) expect the notification as
+    # a raw plain-text POST body, not JSON — Slack/Discord expect JSON.
+    # Detected by hostname since ntfy.sh is the overwhelmingly common case;
+    # a self-hosted ntfy instance under a different domain would need the
+    # JSON path below, which ntfy will just display as a literal string.
+    is_ntfy = "ntfy.sh" in webhook_url
+
+    if is_ntfy:
+        data = message.encode("utf-8")
+        headers = {"Content-Type": "text/plain; charset=utf-8"}
+    else:
+        # Slack incoming webhooks read "text"; Discord webhooks read
+        # "content". Sending both in one payload means the same URL works
+        # for either platform without the form owner needing to specify
+        # which one it is.
+        data = json.dumps({"text": message, "content": message}).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+
+    req = urllib.request.Request(webhook_url, data=data, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
             return 200 <= resp.status < 300

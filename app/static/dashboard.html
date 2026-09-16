@@ -168,7 +168,7 @@ function renderTabs() {
 function bindChrome() {
   document.getElementById('logout-btn').addEventListener('click', handleLogout);
   document.getElementById('account-btn').addEventListener('click', renderAccountView);
-  document.querySelectorAll('.tab-btn').forEach(btn => {
+  document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
       activeTab = btn.dataset.tab;
       renderCurrentTab();
@@ -532,34 +532,11 @@ function renderMyFormsView() {
   card.innerHTML = `
     ${renderTopBar()}
     ${renderTabs()}
-    <h1>Your forms</h1>
+    <div class="top-bar" style="margin-bottom:14px;">
+      <h1 style="margin:0;">Your forms</h1>
+      <button type="button" class="link-btn" id="new-form-btn">+ New form</button>
+    </div>
     <p class="subtitle">Create a link, share it, and see what comes back.</p>
-
-    <p class="section-title">New form</p>
-    <form id="create-form">
-      <label for="title">Title</label>
-      <input type="text" id="title" placeholder="e.g. Employee of the Month" required>
-
-      <div class="form-row">
-        <div>
-          <label for="type">Type</label>
-          <select id="type">
-            <option value="both">Suggestions + Nominations</option>
-            <option value="suggestion">Suggestions only</option>
-            <option value="nomination">Nominations only</option>
-          </select>
-        </div>
-        <div>
-          <label for="slug">Custom link <span class="hint">(optional)</span></label>
-          <input type="text" id="slug" placeholder="auto-generated">
-        </div>
-      </div>
-
-      <p class="hint" style="margin-top:10px; display:block;">Every form always accepts anonymous submissions — people can optionally leave their name.</p>
-
-      <p class="error-msg" id="create-error"></p>
-      <button type="submit" id="create-btn">Create form</button>
-    </form>
 
     <p class="section-title">Your forms (${myProjects.length})</p>
     <div class="project-list" id="project-list"></div>
@@ -567,13 +544,60 @@ function renderMyFormsView() {
 
   bindChrome();
   renderMyProjectList();
+  document.getElementById('new-form-btn').addEventListener('click', showNewFormModal);
+}
+
+function showNewFormModal() {
+  const existing = document.getElementById('new-form-modal-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'new-form-modal-overlay';
+  overlay.className = 'qr-modal-overlay';
+  overlay.innerHTML = `
+    <div class="qr-modal" style="max-width:440px; text-align:left;">
+      <button type="button" class="qr-modal-close" id="new-form-modal-close" aria-label="Close">×</button>
+      <p class="eyebrow">New form</p>
+      <h1 style="font-size:1.25rem; margin-bottom:18px;">Create a form</h1>
+
+      <form id="create-form">
+        <label for="title">Title</label>
+        <input type="text" id="title" placeholder="e.g. Employee of the Month" required>
+
+        <div class="form-row">
+          <div>
+            <label for="type">Type</label>
+            <select id="type">
+              <option value="both">Suggestions + Nominations</option>
+              <option value="suggestion">Suggestions only</option>
+              <option value="nomination">Nominations only</option>
+            </select>
+          </div>
+          <div>
+            <label for="slug">Custom link <span class="hint">(optional)</span></label>
+            <input type="text" id="slug" placeholder="auto-generated">
+          </div>
+        </div>
+
+        <p class="hint" style="margin-top:10px; display:block;">Every form always accepts anonymous submissions — people can optionally leave their name.</p>
+
+        <p class="error-msg" id="create-error"></p>
+        <button type="submit" id="create-btn">Create form</button>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  document.getElementById('new-form-modal-close').addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
   document.getElementById('create-form').addEventListener('submit', handleCreate);
 }
 
 function renderMyProjectList() {
   const list = document.getElementById('project-list');
   if (myProjects.length === 0) {
-    list.innerHTML = `<div class="empty-state">No forms yet — create one above to get a shareable link.</div>`;
+    list.innerHTML = `<div class="empty-state">No forms yet — click "+ New form" above to get a shareable link.</div>`;
     return;
   }
 
@@ -593,7 +617,7 @@ function renderMyProjectList() {
           <div class="project-row-actions">
             <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
             <button class="link-btn share-link-btn" data-url="${url}">Share</button>
-            <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(p.title)}">QR code</button>
+            <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(p.title)}">QR Code to share</button>
             <button class="link-btn view-submissions-btn" data-id="${p.id}">View submissions</button>
             ${p.is_owner ? `<button class="link-btn edit-form-btn" data-id="${p.id}">Edit</button>` : ''}
           </div>
@@ -660,7 +684,10 @@ async function handleCreate(e) {
 
   await loadMyProjects();
   if (currentUser.role === 'admin' || currentUser.role === 'superadmin') await loadAllProjects();
+  const modal = document.getElementById('new-form-modal-overlay');
+  if (modal) modal.remove();
   renderMyFormsView();
+  showToast('Form created');
 }
 
 // ---- Form detail: one page for everything about a single form ----
@@ -747,7 +774,8 @@ async function loadStatusCountsAndRenderPills(projectId) {
   });
 }
 
-async function renderEditPage(projectId) {
+async function renderEditPage(projectId, editTab) {
+  editTab = editTab || 'settings';
   const project = myProjects.find(p => p.id === projectId);
   card.innerHTML = `${renderTopBar()}<p class="subtitle">Loading…</p>`;
 
@@ -756,15 +784,18 @@ async function renderEditPage(projectId) {
 
   const url = `${window.location.origin}/vb/${project.slug}`;
 
-  card.innerHTML = `
-    ${renderTopBar()}
-    <a class="back-link" id="back-link">&larr; Back to your forms</a>
-    <h1>${escapeHtml(project.title)} <span class="badge">${typeLabel(project.type)}</span></h1>
-    <p class="subtitle" style="font-family:'IBM Plex Mono',monospace; font-size:0.82rem;">${url}</p>
-    <button class="link-btn copy-link-btn" data-url="${url}" style="margin-bottom:4px;">Copy link</button>
-    <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(project.title)}" style="margin-bottom:4px;">QR code</button>
+  const editTabs = [
+    { id: 'settings', label: 'Settings' },
+    { id: 'sharing', label: 'Sharing' },
+    { id: 'danger', label: 'Danger zone' },
+  ];
+  const editTabRow = `
+    <div class="tab-row">
+      ${editTabs.map(t => `<button type="button" class="tab-btn ${editTab === t.id ? 'active' : ''}" data-edit-tab="${t.id}">${t.label}</button>`).join('')}
+    </div>
+  `;
 
-    <p class="section-title">Form settings</p>
+  const settingsTabHtml = `
     <form id="edit-form">
       <label for="edit-title">Title</label>
       <input type="text" id="edit-title" value="${escapeAttr(project.title)}" required>
@@ -787,8 +818,8 @@ async function renderEditPage(projectId) {
       <p class="section-title" style="margin-top:24px; font-size:1rem;">New submission notifications</p>
       <p class="hint" style="display:block; margin-bottom:10px;">Optional — get pinged when someone submits. Either or both, or leave blank for neither.</p>
 
-      <label for="edit-webhook-url">Slack or Discord webhook URL</label>
-      <input type="text" id="edit-webhook-url" value="${escapeAttr(project.webhook_url || '')}" placeholder="https://hooks.slack.com/services/… or a Discord webhook URL">
+      <label for="edit-webhook-url">Slack, Discord, or ntfy.sh webhook URL</label>
+      <input type="text" id="edit-webhook-url" value="${escapeAttr(project.webhook_url || '')}" placeholder="https://hooks.slack.com/services/… or https://ntfy.sh/your-topic">
 
       <label for="edit-notify-email">Notification email</label>
       <input type="email" id="edit-notify-email" value="${escapeAttr(project.notify_email || '')}" placeholder="you@company.com">
@@ -797,8 +828,10 @@ async function renderEditPage(projectId) {
       <p class="error-msg" id="edit-error"></p>
       <button type="submit" id="edit-save-btn">Save changes</button>
     </form>
+  `;
 
-    <p class="section-title">Share access</p>
+  const sharingTabHtml = `
+    <p class="section-title" style="margin-top:0;">Share access</p>
     <p class="hint" style="display:block; margin-bottom:12px;">People you add can view submissions and export CSV, but can't edit, delete, or manage sharing.</p>
     <form id="share-form">
       <label for="share-identifier">Their email or username</label>
@@ -818,9 +851,26 @@ async function renderEditPage(projectId) {
       <p class="error-msg" id="transfer-error"></p>
       <button type="submit" id="transfer-btn" style="background: var(--error);">Transfer ownership</button>
     </form>
+  `;
 
-    <p class="section-title">Danger zone</p>
+  const dangerTabHtml = `
+    <p class="section-title" style="margin-top:0;">Delete this form</p>
+    <p class="hint" style="display:block; margin-bottom:14px;">Permanently deletes the form and every submission in it. This can't be undone.</p>
     <button type="button" id="delete-btn" style="background: var(--error);">Delete this form</button>
+  `;
+
+  const tabContent = editTab === 'sharing' ? sharingTabHtml : editTab === 'danger' ? dangerTabHtml : settingsTabHtml;
+
+  card.innerHTML = `
+    ${renderTopBar()}
+    <a class="back-link" id="back-link">&larr; Back to your forms</a>
+    <h1>${escapeHtml(project.title)} <span class="badge">${typeLabel(project.type)}</span></h1>
+    <p class="subtitle" style="font-family:'IBM Plex Mono',monospace; font-size:0.82rem;">${url}</p>
+    <button class="link-btn copy-link-btn" data-url="${url}" style="margin-bottom:4px;">Copy link</button>
+    <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(project.title)}" style="margin-bottom:14px;">QR Code to share</button>
+
+    ${editTabRow}
+    ${tabContent}
   `;
 
   document.getElementById('back-link').addEventListener('click', renderMyFormsView);
@@ -828,13 +878,20 @@ async function renderEditPage(projectId) {
   document.querySelectorAll('.qr-link-btn').forEach(btn => {
     btn.addEventListener('click', () => showQrModal(btn.dataset.url, btn.dataset.title));
   });
+  document.querySelectorAll('[data-edit-tab]').forEach(btn => {
+    btn.addEventListener('click', () => renderEditPage(projectId, btn.dataset.editTab));
+  });
   bindChrome();
 
-  document.getElementById('edit-form').addEventListener('submit', (e) => handleEditSave(e, projectId));
-  document.getElementById('share-form').addEventListener('submit', (e) => handleAddShare(e, projectId));
-  document.getElementById('transfer-form').addEventListener('submit', (e) => handleTransferOwnership(e, projectId, project.title));
-  document.getElementById('delete-btn').addEventListener('click', () => handleDelete(projectId));
-  renderSharesList(shares, projectId);
+  if (editTab === 'settings') {
+    document.getElementById('edit-form').addEventListener('submit', (e) => handleEditSave(e, projectId));
+  } else if (editTab === 'sharing') {
+    document.getElementById('share-form').addEventListener('submit', (e) => handleAddShare(e, projectId));
+    document.getElementById('transfer-form').addEventListener('submit', (e) => handleTransferOwnership(e, projectId, project.title));
+    renderSharesList(shares, projectId);
+  } else if (editTab === 'danger') {
+    document.getElementById('delete-btn').addEventListener('click', () => handleDelete(projectId));
+  }
 }
 
 let currentSubmissionPage = 1;
@@ -1009,6 +1066,7 @@ async function handleEditSave(e, projectId) {
   await loadMyProjects();
   if (currentUser.role === 'admin' || currentUser.role === 'superadmin') await loadAllProjects();
   renderEditPage(projectId);
+  showToast('Changes saved');
 }
 
 async function handleDelete(projectId) {
@@ -1417,8 +1475,15 @@ async function renderSiteSettingsView() {
   activeTab = 'site-settings';
   card.innerHTML = `${renderTopBar()}${renderTabs()}<p class="subtitle">Loading…</p>`;
 
-  const res = await fetch('/api/settings');
-  const settings = res.ok ? await res.json() : { footer_text: '', footer_link_url: '', dark_mode_enabled: true };
+  const res = await fetch('/api/admin/settings');
+  const settings = res.ok ? await res.json() : { footer_text: '', footer_link_url: '', dark_mode_enabled: true, notification_webhook_url: '', last_backup_at: null };
+
+  const projectsRes = await fetch('/api/admin/projects');
+  const allFormsForWatch = projectsRes.ok ? await projectsRes.json() : [];
+
+  const lastBackupText = settings.last_backup_at
+    ? `Last backup: ${new Date(settings.last_backup_at).toLocaleString()}`
+    : 'No backups yet — export one now, or set up the scheduled script (see install.md).';
 
   card.innerHTML = `
     ${renderTopBar()}
@@ -1441,12 +1506,22 @@ async function renderSiteSettingsView() {
       </div>
       <p class="hint" style="display:block; margin-top:6px;">Unchecking this hides the theme toggle everywhere and forces light mode for every visitor, regardless of their own preference.</p>
 
+      <p class="section-title" style="margin-top:28px;">Global notifications</p>
+      <p class="hint" style="display:block; margin-bottom:10px;">Separate from any per-form notifications an owner sets themselves — this fires for whichever forms you pick below, no matter who owns them.</p>
+      <label for="global-webhook-url">Slack, Discord, or ntfy.sh webhook URL</label>
+      <input type="text" id="global-webhook-url" value="${escapeAttr(settings.notification_webhook_url || '')}" placeholder="https://hooks.slack.com/services/… or https://ntfy.sh/your-topic">
+
       <p class="error-msg" id="site-settings-error"></p>
       <button type="submit" id="site-settings-save-btn" style="margin-top:24px;">Save settings</button>
     </form>
 
+    <p class="section-title" style="margin-top:20px;">Forms to notify me about</p>
+    <p class="hint" style="display:block; margin-bottom:12px;">Only applies once a webhook URL is saved above.</p>
+    <div class="project-list" id="watch-list"></div>
+
     <p class="section-title" style="margin-top:32px;">Backups</p>
-    <p class="hint" style="display:block; margin-bottom:14px;">Every user, form, submission, and setting — as structured data, not a raw database file, so it still works after an update changes the schema. Export before pulling any update that requires wiping the database.</p>
+    <p class="hint" style="display:block; margin-bottom:6px;">Every user, form, submission, and setting — as structured data, not a raw database file, so it still works after an update changes the schema. Export before pulling any update that requires wiping the database.</p>
+    <p class="hint" style="display:block; margin-bottom:14px; font-weight:600;" id="last-backup-label">${lastBackupText}</p>
 
     <button type="button" class="link-btn" id="export-backup-btn" style="margin-bottom:20px;">⬇ Export full backup</button>
 
@@ -1465,6 +1540,44 @@ async function renderSiteSettingsView() {
     window.location.href = '/api/admin/export';
   });
   document.getElementById('import-backup-btn').addEventListener('click', handleImportBackup);
+
+  renderWatchList(allFormsForWatch);
+}
+
+function renderWatchList(forms) {
+  const list = document.getElementById('watch-list');
+  if (forms.length === 0) {
+    list.innerHTML = `<div class="empty-state">No forms exist yet.</div>`;
+    return;
+  }
+
+  list.innerHTML = forms.map(p => `
+    <div class="project-row">
+      <div class="project-row-top">
+        <div class="checkbox-row" style="margin:0;">
+          <input type="checkbox" class="watch-checkbox" data-id="${p.id}" ${p.is_watched ? 'checked' : ''}>
+          <label style="margin:0; font-weight:600;">${escapeHtml(p.title)}</label>
+        </div>
+        <span class="hint">${escapeHtml(p.owner_email)}</span>
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.watch-checkbox').forEach(cb => {
+    cb.addEventListener('change', async () => {
+      const res = await fetch(`/api/admin/projects/${cb.dataset.id}/watch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ watched: cb.checked }),
+      });
+      if (!res.ok) {
+        cb.checked = !cb.checked;
+        alert('Could not update — please try again.');
+        return;
+      }
+      showToast(cb.checked ? 'Now notifying for this form' : 'Notifications off for this form');
+    });
+  });
 }
 
 async function handleImportBackup() {
@@ -1530,6 +1643,7 @@ async function handleSaveSiteSettings(e) {
     footer_text: document.getElementById('footer-text').value.trim() || null,
     footer_link_url: document.getElementById('footer-link').value.trim() || null,
     dark_mode_enabled: document.getElementById('dark-mode-enabled').checked,
+    notification_webhook_url: document.getElementById('global-webhook-url').value.trim() || null,
   };
 
   btn.disabled = true;

@@ -258,6 +258,9 @@ class AdminResetPasswordOut(BaseModel):
 # ---- Site settings (superadmin only) ----
 
 class SiteSettingsOut(BaseModel):
+    """Public shape — every page fetches this, including anonymous
+    visitors, so it deliberately excludes notification_webhook_url and
+    last_backup_at. See SiteSettingsAdminOut for the superadmin view."""
     footer_text: Optional[str] = None
     footer_link_url: Optional[str] = None
     dark_mode_enabled: bool = True
@@ -266,12 +269,18 @@ class SiteSettingsOut(BaseModel):
         from_attributes = True
 
 
+class SiteSettingsAdminOut(SiteSettingsOut):
+    notification_webhook_url: Optional[str] = None
+    last_backup_at: Optional[datetime] = None
+
+
 class SiteSettingsUpdate(BaseModel):
     footer_text: Optional[str] = None
     footer_link_url: Optional[str] = None
     dark_mode_enabled: Optional[bool] = None
+    notification_webhook_url: Optional[str] = None
 
-    @field_validator("footer_text", "footer_link_url")
+    @field_validator("footer_text", "footer_link_url", "notification_webhook_url")
     @classmethod
     def blank_to_none(cls, v):
         if v is None:
@@ -444,3 +453,4 @@ class ProjectUpdate(BaseModel):
 
 class ProjectAdminOut(ProjectOut):
     owner_email: str
+    is_watched: bool = False

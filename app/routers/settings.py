@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..auth import require_superadmin
 from ..database import get_db
 from ..models import SiteSettings, User
-from ..schemas import SiteSettingsOut, SiteSettingsUpdate
+from ..schemas import SiteSettingsOut, SiteSettingsAdminOut, SiteSettingsUpdate
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -31,7 +31,7 @@ def get_settings(db: Session = Depends(get_db)):
     return _get_or_create_settings(db)
 
 
-@router.patch("", response_model=SiteSettingsOut)
+@router.patch("", response_model=SiteSettingsAdminOut)
 def update_settings(
     payload: SiteSettingsUpdate,
     superadmin: User = Depends(require_superadmin),
@@ -45,6 +45,8 @@ def update_settings(
         settings.footer_link_url = payload.footer_link_url
     if payload.dark_mode_enabled is not None:
         settings.dark_mode_enabled = payload.dark_mode_enabled
+    if "notification_webhook_url" in payload.model_fields_set:
+        settings.notification_webhook_url = payload.notification_webhook_url
 
     db.commit()
     db.refresh(settings)

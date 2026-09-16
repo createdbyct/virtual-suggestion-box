@@ -50,6 +50,8 @@ function renderForm(form) {
     <h1>${escapeHtml(form.title)}</h1>
     <p class="subtitle">${isBoth ? 'Leave a suggestion, nominate a coworker, or both.' : (form.type === 'nomination' ? "Recognize a coworker (or a few) who's earned it." : 'Tell us what would make things better.')}</p>
 
+    <button type="button" class="link-btn" id="share-form-btn" style="width:100%; justify-content:center; margin-bottom:20px;">🔗 Share or scan this form</button>
+
     <form id="submit-form">
       ${isBoth ? `
         <div class="section-toggle">
@@ -93,19 +95,15 @@ function renderForm(form) {
       <p class="error-msg" id="error-msg"></p>
       <button type="submit" id="submit-btn">Submit</button>
     </form>
-
-    <button type="button" class="link-btn" id="share-form-btn" style="width:100%; justify-content:center; margin-top:14px;">🔗 Share this form</button>
-    <button type="button" class="link-btn" id="show-qr-btn" style="width:100%; justify-content:center; margin-top:10px;">📱 QR code</button>
   `;
 
   document.getElementById('show-identity-btn').addEventListener('click', (e) => {
     document.getElementById('identity-fields').classList.remove('hidden');
     e.target.remove();
   });
-  document.getElementById('share-form-btn').addEventListener('click', handleShareForm);
-  document.getElementById('show-qr-btn').addEventListener('click', () => {
+  document.getElementById('share-form-btn').addEventListener('click', () => {
     const titleEl = document.querySelector('h1');
-    showQrModal(window.location.href, titleEl ? titleEl.textContent : 'Form link');
+    showShareModal(window.location.href, titleEl ? titleEl.textContent : 'Form link');
   });
 
   if (showNomination) {
@@ -276,31 +274,11 @@ function showToast(message) {
   toast._hideTimer = setTimeout(() => toast.classList.remove('visible'), 2200);
 }
 
-async function handleShareForm() {
-  const url = window.location.href;
-  const title = document.querySelector('h1') ? document.querySelector('h1').textContent : 'Virtual Suggestion Box';
-
-  if (navigator.share) {
-    try {
-      await navigator.share({ title, url });
-    } catch (err) {
-      // AbortError just means the person cancelled the native share sheet —
-      // not an actual failure, nothing to show them.
-      if (err.name !== 'AbortError') {
-        navigator.clipboard.writeText(url);
-        showToast('Link copied — ready to share');
-      }
-    }
-    return;
-  }
-
-  navigator.clipboard.writeText(url);
-  showToast('Link copied — ready to share');
-}
-
-function showQrModal(url, title) {
+function showShareModal(url, title) {
   const existing = document.getElementById('qr-modal-overlay');
   if (existing) existing.remove();
+
+  const hasNativeShare = !!navigator.share;
 
   const overlay = document.createElement('div');
   overlay.id = 'qr-modal-overlay';
@@ -308,10 +286,12 @@ function showQrModal(url, title) {
   overlay.innerHTML = `
     <div class="qr-modal">
       <button type="button" class="qr-modal-close" id="qr-modal-close" aria-label="Close">×</button>
-      <p class="eyebrow" style="text-align:center;">QR code</p>
+      <p class="eyebrow" style="text-align:center;">Share this form</p>
       <h1 style="text-align:center; font-size:1.15rem;">${escapeHtml(title || 'Form link')}</h1>
       <div id="qr-modal-code" style="display:flex; justify-content:center; margin:18px 0; background:#fff; padding:16px; border-radius:8px;"></div>
-      <button type="button" class="link-btn" id="qr-modal-download" style="width:100%; justify-content:center;">⬇ Download QR image</button>
+      <button type="button" class="link-btn" id="modal-copy-link" style="width:100%; justify-content:center; margin-bottom:8px;">🔗 Copy link</button>
+      ${hasNativeShare ? `<button type="button" class="link-btn" id="modal-native-share" style="width:100%; justify-content:center; margin-bottom:8px;">📤 Share via…</button>` : ''}
+      <button type="button" class="link-btn" id="modal-download-qr" style="width:100%; justify-content:center;">⬇ Download QR image</button>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -328,7 +308,26 @@ function showQrModal(url, title) {
   document.getElementById('qr-modal-close').addEventListener('click', close);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
-  document.getElementById('qr-modal-download').addEventListener('click', () => {
+  document.getElementById('modal-copy-link').addEventListener('click', () => {
+    navigator.clipboard.writeText(url);
+    showToast('Link copied — ready to share');
+  });
+
+  if (hasNativeShare) {
+    document.getElementById('modal-native-share').addEventListener('click', async () => {
+      try {
+        await navigator.share({ title, url });
+      } catch (err) {
+        // AbortError just means the person cancelled the native share sheet.
+        if (err.name !== 'AbortError') {
+          navigator.clipboard.writeText(url);
+          showToast('Link copied — ready to share');
+        }
+      }
+    });
+  }
+
+  document.getElementById('modal-download-qr').addEventListener('click', () => {
     const container = document.getElementById('qr-modal-code');
     const canvas = container.querySelector('canvas');
     const img = container.querySelector('img');
