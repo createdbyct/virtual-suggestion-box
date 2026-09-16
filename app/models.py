@@ -52,6 +52,11 @@ class Project(Base):
     slug = Column(String, unique=True, nullable=False, index=True)
     # Every form always accepts anonymous submissions — a name is optional,
     # never required — so there's no per-form toggle for it anymore.
+    # Both optional, independent notification channels for new submissions —
+    # a form owner can set either, both, or neither. Best-effort: a failed
+    # notification never blocks the actual submission (see webhook.py).
+    webhook_url = Column(String, nullable=True)
+    notify_email = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="projects")

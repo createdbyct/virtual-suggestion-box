@@ -13,6 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..auth import destroy_all_sessions_for_user, hash_password, require_admin, require_superadmin
+from ..backup import build_backup_dict
 from ..database import get_db
 from ..models import (
     Project, ProjectShare, Submission, Nominee, RecoveryCode,
@@ -25,8 +26,6 @@ from ..schemas import (
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
-
-EXPORT_VERSION = 1
 
 
 @router.get("/projects", response_model=list[ProjectAdminOut])
@@ -186,61 +185,7 @@ def _parse_dt(s):
 
 @router.get("/export")
 def export_data(superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
-    users = db.query(User).all()
-    projects = db.query(Project).all()
-    shares = db.query(ProjectShare).all()
-    submissions = db.query(Submission).all()
-    nominees = db.query(Nominee).all()
-    recovery_codes = db.query(RecoveryCode).all()
-    settings = db.query(SiteSettings).filter(SiteSettings.id == 1).first()
-
-    data = {
-        "export_version": EXPORT_VERSION,
-        "exported_at": _iso(datetime.datetime.utcnow()),
-        "users": [
-            {
-                "id": u.id, "name": u.name, "username": u.username, "email": u.email,
-                "password_hash": u.password_hash, "role": u.role, "is_active": u.is_active,
-                "totp_secret": u.totp_secret, "totp_enabled": u.totp_enabled,
-                "created_at": _iso(u.created_at),
-            } for u in users
-        ],
-        "projects": [
-            {
-                "id": p.id, "owner_id": p.owner_id, "title": p.title, "type": p.type,
-                "slug": p.slug, "created_at": _iso(p.created_at),
-            } for p in projects
-        ],
-        "project_shares": [
-            {"id": s.id, "project_id": s.project_id, "user_id": s.user_id, "created_at": _iso(s.created_at)}
-            for s in shares
-        ],
-        "submissions": [
-            {
-                "id": s.id, "project_id": s.project_id, "suggestion_text": s.suggestion_text,
-                "nomination_reason": s.nomination_reason, "submitter_name": s.submitter_name,
-                "submitter_email": s.submitter_email, "is_anonymous": s.is_anonymous,
-                "edit_token": s.edit_token, "edit_expires_at": _iso(s.edit_expires_at),
-                "status": s.status, "created_at": _iso(s.created_at),
-            } for s in submissions
-        ],
-        "nominees": [
-            {"id": n.id, "submission_id": n.submission_id, "name": n.name, "role": n.role}
-            for n in nominees
-        ],
-        "recovery_codes": [
-            {
-                "id": r.id, "user_id": r.user_id, "code_hash": r.code_hash,
-                "used": r.used, "created_at": _iso(r.created_at),
-            } for r in recovery_codes
-        ],
-        "site_settings": {
-            "footer_text": settings.footer_text,
-            "footer_link_url": settings.footer_link_url,
-            "dark_mode_enabled": settings.dark_mode_enabled,
-        } if settings else None,
-    }
-
+    data = build_backup_dict(db)
     filename = f"virtual-suggestion-box-backup-{datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.json"
     return Response(
         content=json.dumps(data, indent=2),
@@ -281,7 +226,8 @@ def import_data(payload: dict = Body(...), superadmin: User = Depends(require_su
     for p in payload.get("projects", []):
         db.add(Project(
             id=p["id"], owner_id=p["owner_id"], title=p["title"], type=p["type"],
-            slug=p["slug"], created_at=_parse_dt(p.get("created_at")),
+            slug=p["slug"], webhook_url=p.get("webhook_url"), notify_email=p.get("notify_email"),
+            created_at=_parse_dt(p.get("created_at")),
         ))
     db.commit()
 

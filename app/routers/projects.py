@@ -119,6 +119,8 @@ def create_project(payload: ProjectCreate, user: User = Depends(get_current_user
         title=payload.title,
         type=payload.type,
         slug=slug,
+        webhook_url=payload.webhook_url,
+        notify_email=payload.notify_email,
     )
     db.add(project)
     db.commit()
@@ -264,6 +266,10 @@ def update_project(project_id: int, payload: ProjectUpdate, user: User = Depends
         project.title = payload.title
     if payload.type is not None:
         project.type = payload.type
+    if "webhook_url" in payload.model_fields_set:
+        project.webhook_url = payload.webhook_url
+    if "notify_email" in payload.model_fields_set:
+        project.notify_email = payload.notify_email
 
     db.commit()
     db.refresh(project)

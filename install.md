@@ -168,6 +168,43 @@ and wipes the temporary bootstrap account in the process. You'll be
 logged out automatically once the import finishes; log back in with your
 real account.
 
+## Scheduled automatic backups
+
+The manual export button protects you when you remember to click it
+before an update. This protects you the rest of the time — an SD card
+can fail on its own schedule, not just around your deploys.
+
+```bash
+cd ~/virtual-suggestion-box
+source venv/bin/activate
+python3 backup_db.py --keep 14
+```
+
+This writes a timestamped JSON backup into `./backups/` and automatically
+deletes anything beyond the 14 most recent (adjust `--keep` if you want a
+longer/shorter history). Add it to cron for a daily backup at 2am:
+
+```bash
+crontab -e
+```
+Add this line (adjust the path if your username/folder differs):
+```
+0 2 * * * cd /home/yourusername/virtual-suggestion-box && venv/bin/python3 backup_db.py --keep 14 >> /home/yourusername/virtual-suggestion-box/backup.log 2>&1
+```
+
+Worth doing eventually: copy `backups/` somewhere off the Pi entirely
+(another machine, cloud storage) — a backup that lives on the same SD
+card it's protecting against doesn't help if that card fails outright.
+
+## New-submission notifications
+
+Each form can optionally notify you when someone submits — set from
+that form's **Edit** page:
+- **Slack or Discord webhook URL** — paste either kind of webhook URL, both work with the same field (the payload includes both platforms' expected format).
+- **Notification email** — requires SMTP to be configured (see the systemd service section above); silently does nothing if it isn't.
+
+Both are optional and independent — set either, both, or neither, per form. A failed send (webhook unreachable, email misconfigured) never blocks the actual submission; it's sent in the background after the submitter already has their confirmation.
+
 ## Troubleshooting
 
 - **Service won't start** — check `sudo journalctl -u suggestion-box -e` for the actual Python traceback.

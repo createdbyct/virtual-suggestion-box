@@ -324,6 +324,8 @@ class ProjectCreate(BaseModel):
     title: str
     type: str  # 'suggestion' | 'nomination' | 'both'
     slug: Optional[str] = None  # auto-generated from title if omitted
+    webhook_url: Optional[str] = None
+    notify_email: Optional[str] = None
 
     @field_validator("title")
     @classmethod
@@ -332,6 +334,14 @@ class ProjectCreate(BaseModel):
         if not v:
             raise ValueError("title cannot be blank")
         return v
+
+    @field_validator("webhook_url", "notify_email")
+    @classmethod
+    def blank_to_none(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
     @field_validator("type")
     @classmethod
@@ -359,6 +369,8 @@ class ProjectOut(BaseModel):
     title: str
     type: str
     slug: str
+    webhook_url: Optional[str] = None
+    notify_email: Optional[str] = None
     created_at: datetime
     submission_count: int = 0
     is_owner: bool = True
@@ -388,6 +400,16 @@ class ProjectUpdate(BaseModel):
     title: Optional[str] = None
     type: Optional[str] = None
     slug: Optional[str] = None
+    webhook_url: Optional[str] = None
+    notify_email: Optional[str] = None
+
+    @field_validator("webhook_url", "notify_email")
+    @classmethod
+    def blank_to_none(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
     @field_validator("title")
     @classmethod

@@ -5,16 +5,18 @@ a submission within the 24hr window via its edit token.
 """
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..mailer import is_email_configured, send_email
 from ..models import Project, Submission, Nominee
 from ..rate_limit import check_rate_limit, get_client_ip
 from ..schemas import (
     SubmissionCreate, SubmissionEdit, SubmissionOut,
     SubmissionConfirmation, ProjectPublicOut,
 )
+from ..webhook import send_webhook_notification, build_submission_message
 
 router = APIRouter(prefix="/api/vb", tags=["public"])
 
@@ -41,7 +43,7 @@ def get_form(slug: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{slug}/submit", response_model=SubmissionConfirmation)
-def submit(slug: str, payload: SubmissionCreate, request: Request, db: Session = Depends(get_db)):
+def submit(slug: str, payload: SubmissionCreate, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     ip = get_client_ip(request)
     if not check_rate_limit(f"submit:{ip}", SUBMIT_RATE_MAX, SUBMIT_RATE_WINDOW_SECONDS):
         raise HTTPException(status_code=429, detail="Too many submissions from this connection — please wait a bit and try again")
@@ -88,6 +90,23 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, db: Session =
     db.add(submission)
     db.commit()
     db.refresh(submission)
+
+    # Best-effort notifications — fired as background tasks so a slow or
+    # failing webhook/email send never adds latency to the submitter's
+    # response, and never breaks the submission itself either way.
+    if project.webhook_url or project.notify_email:
+        nominee_names = [n.name for n in payload.nominees] if has_nomination else []
+        message = build_submission_message(
+            project.title, payload.submitter_name, is_anonymous,
+            submission.suggestion_text, submission.nomination_reason, nominee_names,
+        )
+        if project.webhook_url:
+            background_tasks.add_task(send_webhook_notification, project.webhook_url, message)
+        if project.notify_email and is_email_configured():
+            background_tasks.add_task(
+                send_email, project.notify_email,
+                f"New submission — {project.title}", message,
+            )
 
     return SubmissionConfirmation(
         id=submission.id,
