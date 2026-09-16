@@ -42,9 +42,7 @@ def build_backup_dict(db: Session) -> dict:
         "projects": [
             {
                 "id": p.id, "owner_id": p.owner_id, "title": p.title, "type": p.type,
-                "slug": p.slug, "webhook_url": getattr(p, "webhook_url", None),
-                "notify_email": getattr(p, "notify_email", None),
-                "created_at": _iso(p.created_at),
+                "slug": p.slug, "created_at": _iso(p.created_at),
             } for p in projects
         ],
         "project_shares": [

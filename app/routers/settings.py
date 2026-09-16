@@ -47,6 +47,8 @@ def update_settings(
         settings.dark_mode_enabled = payload.dark_mode_enabled
     if "notification_webhook_url" in payload.model_fields_set:
         settings.notification_webhook_url = payload.notification_webhook_url
+    if "notification_email" in payload.model_fields_set:
+        settings.notification_email = payload.notification_email
     if "smtp_host" in payload.model_fields_set:
         settings.smtp_host = payload.smtp_host
     if payload.smtp_port is not None:
@@ -67,6 +69,7 @@ def update_settings(
         footer_link_url=settings.footer_link_url,
         dark_mode_enabled=settings.dark_mode_enabled,
         notification_webhook_url=settings.notification_webhook_url,
+        notification_email=settings.notification_email,
         last_backup_at=settings.last_backup_at,
         smtp_host=settings.smtp_host,
         smtp_port=settings.smtp_port,

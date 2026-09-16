@@ -86,6 +86,7 @@ def get_admin_settings(superadmin: User = Depends(require_superadmin), db: Sessi
         footer_link_url=settings.footer_link_url,
         dark_mode_enabled=settings.dark_mode_enabled,
         notification_webhook_url=settings.notification_webhook_url,
+        notification_email=settings.notification_email,
         last_backup_at=settings.last_backup_at,
         smtp_host=settings.smtp_host,
         smtp_port=settings.smtp_port,
@@ -281,8 +282,7 @@ def import_data(payload: dict = Body(...), superadmin: User = Depends(require_su
     for p in payload.get("projects", []):
         db.add(Project(
             id=p["id"], owner_id=p["owner_id"], title=p["title"], type=p["type"],
-            slug=p["slug"], webhook_url=p.get("webhook_url"), notify_email=p.get("notify_email"),
-            created_at=_parse_dt(p.get("created_at")),
+            slug=p["slug"], created_at=_parse_dt(p.get("created_at")),
         ))
     db.commit()
 

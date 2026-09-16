@@ -52,11 +52,8 @@ class Project(Base):
     slug = Column(String, unique=True, nullable=False, index=True)
     # Every form always accepts anonymous submissions — a name is optional,
     # never required — so there's no per-form toggle for it anymore.
-    # Both optional, independent notification channels for new submissions —
-    # a form owner can set either, both, or neither. Best-effort: a failed
-    # notification never blocks the actual submission (see webhook.py).
-    webhook_url = Column(String, nullable=True)
-    notify_email = Column(String, nullable=True)
+    # Notifications are superadmin-only and global (see SiteSettings +
+    # WatchedForm below) — no per-form notification config on purpose.
     created_at = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="projects")
@@ -182,11 +179,12 @@ class SiteSettings(Base):
     footer_text = Column(String, nullable=True)
     footer_link_url = Column(String, nullable=True)
     dark_mode_enabled = Column(Boolean, nullable=False, default=True)
-    # Global notification channel (Slack/Discord/ntfy.sh) — separate from
-    # any per-form owner-set webhook_url/notify_email on Project. This one
-    # fires for whichever forms are in WatchedForm, regardless of who owns
-    # them, since only a superadmin can configure it.
+    # Global notification channels (webhook and/or email) — separate from
+    # any per-form config (there is none — notifications are superadmin-
+    # only and global by design). Both fire independently for whichever
+    # forms are in WatchedForm, regardless of who owns them.
     notification_webhook_url = Column(String, nullable=True)
+    notification_email = Column(String, nullable=True)
     # SMTP config, settable via the superadmin UI — falls back to env
     # vars (SMTP_HOST etc.) if any of these are unset, so an existing
     # systemd-based deployment keeps working without changes.

@@ -198,14 +198,15 @@ card it's protecting against doesn't help if that card fails outright.
 
 ## New-submission notifications
 
-Two independent layers, both optional, both fire in the background so a
-slow/failed send never blocks the actual submission:
+Superadmin-only and global — there's deliberately no per-form
+notification config. From Site Settings → **Global notifications**:
+a webhook URL, a notification email, or both — plus a checklist of
+every form across every owner. Pick which ones you want pinged for;
+both channels fire independently in the background so a slow/failed
+send never blocks the actual submission.
 
-**Per-form (set by the form's owner, on its Edit page → Settings tab):**
-- **Slack, Discord, or ntfy.sh webhook URL** — one field works for all three; ntfy.sh URLs (containing `ntfy.sh`) get plain-text POSTs the way ntfy expects, everything else gets a JSON payload Slack/Discord both understand.
-- **Notification email** — requires SMTP to be configured (see above); silently does nothing if it isn't.
-
-**Global (superadmin only, Site Settings → Global notifications):** one webhook URL, plus a checklist of every form across every owner — pick which ones you personally want pinged for. Independent of any per-form settings; a submission on a watched form fires this in addition to whatever the form owner configured, not instead of it.
+- **Webhook** — Slack, Discord, or ntfy.sh, all in the same field. ntfy.sh URLs (containing `ntfy.sh`) automatically get plain-text POSTs the way ntfy expects; everything else gets a JSON payload Slack/Discord both understand.
+- **Email** — requires SMTP configured just below it on the same page (or via env vars — see above).
 
 ## Troubleshooting
 

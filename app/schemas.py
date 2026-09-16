@@ -259,8 +259,9 @@ class AdminResetPasswordOut(BaseModel):
 
 class SiteSettingsOut(BaseModel):
     """Public shape — every page fetches this, including anonymous
-    visitors, so it deliberately excludes notification_webhook_url and
-    last_backup_at. See SiteSettingsAdminOut for the superadmin view."""
+    visitors, so it deliberately excludes notification_webhook_url,
+    notification_email, and last_backup_at. See SiteSettingsAdminOut for
+    the superadmin view."""
     footer_text: Optional[str] = None
     footer_link_url: Optional[str] = None
     dark_mode_enabled: bool = True
@@ -271,6 +272,7 @@ class SiteSettingsOut(BaseModel):
 
 class SiteSettingsAdminOut(SiteSettingsOut):
     notification_webhook_url: Optional[str] = None
+    notification_email: Optional[str] = None
     last_backup_at: Optional[datetime] = None
     smtp_host: Optional[str] = None
     smtp_port: Optional[int] = None
@@ -287,6 +289,7 @@ class SiteSettingsUpdate(BaseModel):
     footer_link_url: Optional[str] = None
     dark_mode_enabled: Optional[bool] = None
     notification_webhook_url: Optional[str] = None
+    notification_email: Optional[str] = None
     smtp_host: Optional[str] = None
     smtp_port: Optional[int] = None
     smtp_username: Optional[str] = None
@@ -297,7 +300,7 @@ class SiteSettingsUpdate(BaseModel):
     smtp_from_email: Optional[str] = None
     smtp_from_name: Optional[str] = None
 
-    @field_validator("footer_text", "footer_link_url", "notification_webhook_url",
+    @field_validator("footer_text", "footer_link_url", "notification_webhook_url", "notification_email",
                       "smtp_host", "smtp_username", "smtp_from_email", "smtp_from_name")
     @classmethod
     def blank_to_none(cls, v):
@@ -351,8 +354,6 @@ class ProjectCreate(BaseModel):
     title: str
     type: str  # 'suggestion' | 'nomination' | 'both'
     slug: Optional[str] = None  # auto-generated from title if omitted
-    webhook_url: Optional[str] = None
-    notify_email: Optional[str] = None
 
     @field_validator("title")
     @classmethod
@@ -361,14 +362,6 @@ class ProjectCreate(BaseModel):
         if not v:
             raise ValueError("title cannot be blank")
         return v
-
-    @field_validator("webhook_url", "notify_email")
-    @classmethod
-    def blank_to_none(cls, v):
-        if v is None:
-            return None
-        v = v.strip()
-        return v or None
 
     @field_validator("type")
     @classmethod
@@ -396,8 +389,6 @@ class ProjectOut(BaseModel):
     title: str
     type: str
     slug: str
-    webhook_url: Optional[str] = None
-    notify_email: Optional[str] = None
     created_at: datetime
     submission_count: int = 0
     is_owner: bool = True
@@ -427,16 +418,6 @@ class ProjectUpdate(BaseModel):
     title: Optional[str] = None
     type: Optional[str] = None
     slug: Optional[str] = None
-    webhook_url: Optional[str] = None
-    notify_email: Optional[str] = None
-
-    @field_validator("webhook_url", "notify_email")
-    @classmethod
-    def blank_to_none(cls, v):
-        if v is None:
-            return None
-        v = v.strip()
-        return v or None
 
     @field_validator("title")
     @classmethod

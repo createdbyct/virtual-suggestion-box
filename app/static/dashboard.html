@@ -815,15 +815,6 @@ async function renderEditPage(projectId, editTab) {
         </div>
       </div>
 
-      <p class="section-title" style="margin-top:24px; font-size:1rem;">New submission notifications</p>
-      <p class="hint" style="display:block; margin-bottom:10px;">Optional — get pinged when someone submits. Either or both, or leave blank for neither.</p>
-
-      <label for="edit-webhook-url">Slack or Discord webhook URL</label>
-      <input type="text" id="edit-webhook-url" value="${escapeAttr(project.webhook_url || '')}" placeholder="https://hooks.slack.com/services/… or a Discord webhook URL">
-
-      <label for="edit-notify-email">Notification email</label>
-      <input type="email" id="edit-notify-email" value="${escapeAttr(project.notify_email || '')}" placeholder="you@company.com">
-
       <p class="error-msg" id="edit-error"></p>
       <button type="submit" id="edit-save-btn">Save changes</button>
     </form>
@@ -1031,8 +1022,6 @@ async function handleEditSave(e, projectId) {
     title: document.getElementById('edit-title').value.trim(),
     type: document.getElementById('edit-type').value,
     slug: document.getElementById('edit-slug').value.trim(),
-    webhook_url: document.getElementById('edit-webhook-url').value.trim() || null,
-    notify_email: document.getElementById('edit-notify-email').value.trim() || null,
   };
 
   btn.disabled = true;
@@ -1477,7 +1466,7 @@ async function renderSiteSettingsView() {
   const res = await fetch('/api/admin/settings');
   const settings = res.ok ? await res.json() : {
     footer_text: '', footer_link_url: '', dark_mode_enabled: true,
-    notification_webhook_url: '', last_backup_at: null,
+    notification_webhook_url: '', notification_email: '', last_backup_at: null,
     smtp_host: '', smtp_port: null, smtp_username: '', smtp_from_email: '', smtp_from_name: '', smtp_password_set: false,
   };
 
@@ -1510,12 +1499,15 @@ async function renderSiteSettingsView() {
       <p class="hint" style="display:block; margin-top:6px;">Unchecking this hides the theme toggle everywhere and forces light mode for every visitor, regardless of their own preference.</p>
 
       <p class="section-title" style="margin-top:28px;">Global notifications</p>
-      <p class="hint" style="display:block; margin-bottom:10px;">Separate from any per-form notifications an owner sets themselves — this fires for whichever forms you pick below, no matter who owns them.</p>
-      <label for="global-webhook-url">Slack, Discord, or ntfy.sh webhook URL</label>
+      <p class="hint" style="display:block; margin-bottom:10px;">No per-form notification options exist — this is the only place to configure them, and it applies to whichever forms you pick below, no matter who owns them.</p>
+      <label for="global-webhook-url">Slack, Discord, or ntfy.sh webhook URL <span class="hint">(optional)</span></label>
       <input type="text" id="global-webhook-url" value="${escapeAttr(settings.notification_webhook_url || '')}" placeholder="https://hooks.slack.com/services/… or https://ntfy.sh/your-topic">
 
+      <label for="global-notify-email">Notification email <span class="hint">(optional — requires SMTP configured below)</span></label>
+      <input type="email" id="global-notify-email" value="${escapeAttr(settings.notification_email || '')}" placeholder="you@company.com">
+
       <p class="section-title" style="margin-top:28px;">Email (SMTP)</p>
-      <p class="hint" style="display:block; margin-bottom:10px;">Powers password-reset emails and any per-form "notification email" set on a form's Edit page. Leave everything blank to use environment variables instead (see install.md) — this panel takes priority over those if filled in.</p>
+      <p class="hint" style="display:block; margin-bottom:10px;">Powers password-reset emails and the notification email above. Leave everything blank to use environment variables instead (see install.md) — this panel takes priority over those if filled in.</p>
 
       <label for="smtp-host">SMTP host</label>
       <input type="text" id="smtp-host" value="${escapeAttr(settings.smtp_host || '')}" placeholder="smtp.gmail.com">
@@ -1679,6 +1671,7 @@ async function handleSaveSiteSettings(e) {
     footer_link_url: document.getElementById('footer-link').value.trim() || null,
     dark_mode_enabled: document.getElementById('dark-mode-enabled').checked,
     notification_webhook_url: document.getElementById('global-webhook-url').value.trim() || null,
+    notification_email: document.getElementById('global-notify-email').value.trim() || null,
     smtp_host: document.getElementById('smtp-host').value.trim() || null,
     smtp_port: smtpPortRaw ? parseInt(smtpPortRaw, 10) : null,
     smtp_username: document.getElementById('smtp-username').value.trim() || null,
