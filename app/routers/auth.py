@@ -20,7 +20,7 @@ from ..auth import (
 )
 from ..database import get_db
 from ..models import User, AuthSession, PasswordResetToken, RecoveryCode
-from ..mailer import is_email_configured, send_email, build_public_url
+from ..mailer import get_smtp_config, is_smtp_configured, send_email, build_public_url
 from ..rate_limit import (
     check_rate_limit, is_locked_out, record_login_failure,
     clear_login_failures, get_client_ip,
@@ -172,10 +172,12 @@ def forgot_password(payload: ForgotPasswordIn, request: Request, db: Session = D
     db.commit()
 
     reset_path = f"/reset-password/{token}"
+    smtp_config = get_smtp_config(db)
 
-    if is_email_configured():
+    if is_smtp_configured(smtp_config):
         full_url = build_public_url(reset_path, request)
         sent = send_email(
+            smtp_config,
             user.email,
             "Reset your password — Virtual Suggestion Box",
             f"Hi {user.name},\n\n"

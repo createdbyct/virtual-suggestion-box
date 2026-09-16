@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..mailer import is_email_configured, send_email
+from ..mailer import get_smtp_config, is_smtp_configured, send_email
 from ..models import Project, Submission, Nominee, WatchedForm, SiteSettings
 from ..rate_limit import check_rate_limit, get_client_ip
 from ..schemas import (
@@ -107,11 +107,13 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
         # Per-form, owner-configured channels.
         if project.webhook_url:
             background_tasks.add_task(send_webhook_notification, project.webhook_url, message)
-        if project.notify_email and is_email_configured():
-            background_tasks.add_task(
-                send_email, project.notify_email,
-                f"New submission — {project.title}", message,
-            )
+        if project.notify_email:
+            smtp_config = get_smtp_config(db)  # resolved now, synchronously — db may not be
+            if is_smtp_configured(smtp_config):  # valid anymore by the time a background task runs
+                background_tasks.add_task(
+                    send_email, smtp_config, project.notify_email,
+                    f"New submission — {project.title}", message,
+                )
         # Global, superadmin-configured channel — separate from the above,
         # fires independently if this form is on the watch list.
         if global_webhook_url:

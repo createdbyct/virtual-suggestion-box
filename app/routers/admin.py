@@ -77,9 +77,23 @@ def toggle_watch_form(project_id: int, watched: bool = Body(embed=True), superad
 
 @router.get("/settings", response_model=SiteSettingsAdminOut)
 def get_admin_settings(superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
-    """Superadmin's own view of settings — includes last_backup_at and the
-    notification_webhook_url, unlike the public GET /api/settings."""
-    return _get_or_create_settings(db)
+    """Superadmin's own view of settings — includes last_backup_at, the
+    notification_webhook_url, and SMTP config (never the raw password),
+    unlike the public GET /api/settings."""
+    settings = _get_or_create_settings(db)
+    return SiteSettingsAdminOut(
+        footer_text=settings.footer_text,
+        footer_link_url=settings.footer_link_url,
+        dark_mode_enabled=settings.dark_mode_enabled,
+        notification_webhook_url=settings.notification_webhook_url,
+        last_backup_at=settings.last_backup_at,
+        smtp_host=settings.smtp_host,
+        smtp_port=settings.smtp_port,
+        smtp_username=settings.smtp_username,
+        smtp_from_email=settings.smtp_from_email,
+        smtp_from_name=settings.smtp_from_name,
+        smtp_password_set=bool(settings.smtp_password),
+    )
 
 
 @router.get("/projects/{project_id}/submissions", response_model=list[SubmissionOut])

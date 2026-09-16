@@ -272,6 +272,14 @@ class SiteSettingsOut(BaseModel):
 class SiteSettingsAdminOut(SiteSettingsOut):
     notification_webhook_url: Optional[str] = None
     last_backup_at: Optional[datetime] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_username: Optional[str] = None
+    smtp_from_email: Optional[str] = None
+    smtp_from_name: Optional[str] = None
+    # Never the actual password — just whether one is currently set, so
+    # the UI can show "configured" without ever exposing the value back.
+    smtp_password_set: bool = False
 
 
 class SiteSettingsUpdate(BaseModel):
@@ -279,8 +287,18 @@ class SiteSettingsUpdate(BaseModel):
     footer_link_url: Optional[str] = None
     dark_mode_enabled: Optional[bool] = None
     notification_webhook_url: Optional[str] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_username: Optional[str] = None
+    # Blank/omitted means "leave the existing password alone" — there's
+    # deliberately no way to explicitly clear it back to empty via this
+    # field; unset the whole SMTP config's other fields if that's the goal.
+    smtp_password: Optional[str] = None
+    smtp_from_email: Optional[str] = None
+    smtp_from_name: Optional[str] = None
 
-    @field_validator("footer_text", "footer_link_url", "notification_webhook_url")
+    @field_validator("footer_text", "footer_link_url", "notification_webhook_url",
+                      "smtp_host", "smtp_username", "smtp_from_email", "smtp_from_name")
     @classmethod
     def blank_to_none(cls, v):
         if v is None:

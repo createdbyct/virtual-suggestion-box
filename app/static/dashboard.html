@@ -818,12 +818,11 @@ async function renderEditPage(projectId, editTab) {
       <p class="section-title" style="margin-top:24px; font-size:1rem;">New submission notifications</p>
       <p class="hint" style="display:block; margin-bottom:10px;">Optional — get pinged when someone submits. Either or both, or leave blank for neither.</p>
 
-      <label for="edit-webhook-url">Slack, Discord, or ntfy.sh webhook URL</label>
-      <input type="text" id="edit-webhook-url" value="${escapeAttr(project.webhook_url || '')}" placeholder="https://hooks.slack.com/services/… or https://ntfy.sh/your-topic">
+      <label for="edit-webhook-url">Slack or Discord webhook URL</label>
+      <input type="text" id="edit-webhook-url" value="${escapeAttr(project.webhook_url || '')}" placeholder="https://hooks.slack.com/services/… or a Discord webhook URL">
 
       <label for="edit-notify-email">Notification email</label>
       <input type="email" id="edit-notify-email" value="${escapeAttr(project.notify_email || '')}" placeholder="you@company.com">
-      <p class="hint" style="display:block; margin-top:4px;">Requires email (SMTP) to be configured on the server — see install.md. If it isn't, this field is saved but silently does nothing.</p>
 
       <p class="error-msg" id="edit-error"></p>
       <button type="submit" id="edit-save-btn">Save changes</button>
@@ -1476,7 +1475,11 @@ async function renderSiteSettingsView() {
   card.innerHTML = `${renderTopBar()}${renderTabs()}<p class="subtitle">Loading…</p>`;
 
   const res = await fetch('/api/admin/settings');
-  const settings = res.ok ? await res.json() : { footer_text: '', footer_link_url: '', dark_mode_enabled: true, notification_webhook_url: '', last_backup_at: null };
+  const settings = res.ok ? await res.json() : {
+    footer_text: '', footer_link_url: '', dark_mode_enabled: true,
+    notification_webhook_url: '', last_backup_at: null,
+    smtp_host: '', smtp_port: null, smtp_username: '', smtp_from_email: '', smtp_from_name: '', smtp_password_set: false,
+  };
 
   const projectsRes = await fetch('/api/admin/projects');
   const allFormsForWatch = projectsRes.ok ? await projectsRes.json() : [];
@@ -1510,6 +1513,37 @@ async function renderSiteSettingsView() {
       <p class="hint" style="display:block; margin-bottom:10px;">Separate from any per-form notifications an owner sets themselves — this fires for whichever forms you pick below, no matter who owns them.</p>
       <label for="global-webhook-url">Slack, Discord, or ntfy.sh webhook URL</label>
       <input type="text" id="global-webhook-url" value="${escapeAttr(settings.notification_webhook_url || '')}" placeholder="https://hooks.slack.com/services/… or https://ntfy.sh/your-topic">
+
+      <p class="section-title" style="margin-top:28px;">Email (SMTP)</p>
+      <p class="hint" style="display:block; margin-bottom:10px;">Powers password-reset emails and any per-form "notification email" set on a form's Edit page. Leave everything blank to use environment variables instead (see install.md) — this panel takes priority over those if filled in.</p>
+
+      <label for="smtp-host">SMTP host</label>
+      <input type="text" id="smtp-host" value="${escapeAttr(settings.smtp_host || '')}" placeholder="smtp.gmail.com">
+
+      <div class="form-row">
+        <div>
+          <label for="smtp-port">Port</label>
+          <input type="text" id="smtp-port" value="${settings.smtp_port || ''}" placeholder="587">
+        </div>
+        <div>
+          <label for="smtp-username">Username</label>
+          <input type="text" id="smtp-username" value="${escapeAttr(settings.smtp_username || '')}" placeholder="you@gmail.com">
+        </div>
+      </div>
+
+      <label for="smtp-password">Password ${settings.smtp_password_set ? '<span class="hint">(already set — leave blank to keep it)</span>' : ''}</label>
+      <input type="password" id="smtp-password" placeholder="${settings.smtp_password_set ? '••••••••••••' : 'app password or SMTP password'}" autocomplete="new-password">
+
+      <div class="form-row">
+        <div>
+          <label for="smtp-from-email">From email <span class="hint">(optional)</span></label>
+          <input type="text" id="smtp-from-email" value="${escapeAttr(settings.smtp_from_email || '')}" placeholder="defaults to username">
+        </div>
+        <div>
+          <label for="smtp-from-name">From name <span class="hint">(optional)</span></label>
+          <input type="text" id="smtp-from-name" value="${escapeAttr(settings.smtp_from_name || '')}" placeholder="Virtual Suggestion Box">
+        </div>
+      </div>
 
       <p class="error-msg" id="site-settings-error"></p>
       <button type="submit" id="site-settings-save-btn" style="margin-top:24px;">Save settings</button>
@@ -1639,11 +1673,18 @@ async function handleSaveSiteSettings(e) {
   const btn = document.getElementById('site-settings-save-btn');
   errorEl.classList.remove('visible');
 
+  const smtpPortRaw = document.getElementById('smtp-port').value.trim();
   const payload = {
     footer_text: document.getElementById('footer-text').value.trim() || null,
     footer_link_url: document.getElementById('footer-link').value.trim() || null,
     dark_mode_enabled: document.getElementById('dark-mode-enabled').checked,
     notification_webhook_url: document.getElementById('global-webhook-url').value.trim() || null,
+    smtp_host: document.getElementById('smtp-host').value.trim() || null,
+    smtp_port: smtpPortRaw ? parseInt(smtpPortRaw, 10) : null,
+    smtp_username: document.getElementById('smtp-username').value.trim() || null,
+    smtp_password: document.getElementById('smtp-password').value,  // blank means "keep existing" — enforced server-side
+    smtp_from_email: document.getElementById('smtp-from-email').value.trim() || null,
+    smtp_from_name: document.getElementById('smtp-from-name').value.trim() || null,
   };
 
   btn.disabled = true;

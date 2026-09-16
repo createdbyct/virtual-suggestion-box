@@ -187,6 +187,15 @@ class SiteSettings(Base):
     # fires for whichever forms are in WatchedForm, regardless of who owns
     # them, since only a superadmin can configure it.
     notification_webhook_url = Column(String, nullable=True)
+    # SMTP config, settable via the superadmin UI — falls back to env
+    # vars (SMTP_HOST etc.) if any of these are unset, so an existing
+    # systemd-based deployment keeps working without changes.
+    smtp_host = Column(String, nullable=True)
+    smtp_port = Column(Integer, nullable=True)
+    smtp_username = Column(String, nullable=True)
+    smtp_password = Column(String, nullable=True)
+    smtp_from_email = Column(String, nullable=True)
+    smtp_from_name = Column(String, nullable=True)
     # Set automatically by backup_db.py and by the manual export endpoint —
     # not user-editable directly.
     last_backup_at = Column(DateTime, nullable=True)

@@ -83,11 +83,11 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-**About the SMTP lines:** these are only needed if you want password-reset emails actually delivered instead of shown on-screen. Skip them entirely and the app falls back to showing the reset link directly — still fully functional, just not emailed.
+**About the SMTP lines:** these are optional — either configure email here as env vars, or skip them entirely and set it up later through Site Settings → Email (SMTP) once you're logged in as a superadmin (that panel takes priority over these env vars if both are set). Either way, skipping both just falls back to showing the password-reset link on-screen instead of emailing it — still fully functional, just not emailed.
 
-If using Gmail: you can't use your normal password — Google requires an **App Password** instead. Go to your Google Account → Security → 2-Step Verification (must be enabled) → App Passwords → generate one for "Mail." Use that 16-character password as `SMTP_PASSWORD`, not your real Gmail password.
+If using Gmail: you can't use your normal password — Google requires an **App Password** instead. Go to your Google Account → Security → 2-Step Verification (must be enabled) → App Passwords → generate one for "Mail." Use that 16-character password as `SMTP_PASSWORD` (or in the Site Settings panel), not your real Gmail password.
 
-`PUBLIC_BASE_URL` matters once SMTP is configured — it's what gets used to build the actual link inside the email. Without it, the app falls back to guessing from the incoming request, which is unreliable behind Cloudflare Tunnel. Set it to your real public domain once you've set up the tunnel (next step).
+`PUBLIC_BASE_URL` matters once SMTP is configured either way — it's what gets used to build the actual link inside the email. Without it, the app falls back to guessing from the incoming request, which is unreliable behind Cloudflare Tunnel. Set it to your real public domain once you've set up the tunnel (next step). This one stays an env var — it's a deployment detail, not a mail-account credential, so it isn't in the Site Settings panel.
 
 ```bash
 sudo systemctl enable --now suggestion-box
