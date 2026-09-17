@@ -9,25 +9,39 @@ import io
 import re
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user, find_user_by_identifier
 from ..database import get_db
-from ..models import Project, ProjectShare, Submission, Nominee, User
+from ..mailer import get_smtp_config, is_smtp_configured, send_email
+from ..models import Project, ProjectShare, Submission, Nominee, User, WatchedForm, SiteSettings
 from ..schemas import (
     ProjectCreate, ProjectOut, ProjectUpdate, SubmissionOut, SubmissionListOut,
     SubmissionStatusUpdate, SubmissionStatusCounts, ShareIn, ShareOut, TransferOwnershipIn,
 )
+from ..webhook import send_webhook_notification, build_new_form_message
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
 def _slugify(title: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
-    return slug or "form"
+    slug = slug or "form"
+
+    max_len = 40
+    if len(slug) > max_len:
+        truncated = slug[:max_len]
+        # Cut at the last word boundary within the limit rather than
+        # mid-word, as long as that doesn't make it too short to be
+        # meaningful — falls back to a hard cut otherwise.
+        last_dash = truncated.rfind("-")
+        if last_dash > 15:
+            truncated = truncated[:last_dash]
+        slug = truncated.strip("-") or "form"
+    return slug
 
 
 def _unique_slug(base_slug: str, db: Session) -> str:
@@ -101,7 +115,7 @@ def _get_accessible_project_or_404(project_id: int, user: User, db: Session) -> 
 
 
 @router.post("", response_model=ProjectOut)
-def create_project(payload: ProjectCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_project(payload: ProjectCreate, background_tasks: BackgroundTasks, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if payload.slug:
         # Explicit custom link — auto-increment if it's taken (link-2,
         # link-3, ...) rather than erroring, same as the title-based
@@ -119,22 +133,47 @@ def create_project(payload: ProjectCreate, user: User = Depends(get_current_user
     db.add(project)
     db.commit()
     db.refresh(project)
+
+    # Every new form is watched by default, so the superadmin doesn't have
+    # to remember to go check a box for each one — they can always
+    # unwatch it from Site Settings if they don't want the noise.
+    db.add(WatchedForm(project_id=project.id))
+    db.commit()
+
+    # Best-effort, background — a slow/failed notification never blocks
+    # form creation, same pattern as the new-submission notifications.
+    site_settings = db.query(SiteSettings).filter(SiteSettings.id == 1).first()
+    if site_settings and (site_settings.notification_webhook_url or site_settings.notification_email):
+        message = build_new_form_message(project.title, user.name)
+        if site_settings.notification_webhook_url:
+            background_tasks.add_task(send_webhook_notification, site_settings.notification_webhook_url, message)
+        if site_settings.notification_email:
+            smtp_config = get_smtp_config(db)  # resolved now, synchronously — db may not
+            if is_smtp_configured(smtp_config):  # still be valid by the time a background task runs
+                background_tasks.add_task(
+                    send_email, smtp_config, site_settings.notification_email,
+                    f"New form created — {project.title}", message,
+                )
+
     project.submission_count = 0
+    project.new_submission_count = 0
     project.is_owner = True
     return project
 
 
 @router.get("", response_model=list[ProjectOut])
 def list_my_projects(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    new_count_expr = func.sum(case((Submission.status == "new", 1), else_=0))
+
     owned_rows = (
-        db.query(Project, func.count(Submission.id).label("submission_count"))
+        db.query(Project, func.count(Submission.id).label("submission_count"), new_count_expr.label("new_count"))
         .outerjoin(Submission, Submission.project_id == Project.id)
         .filter(Project.owner_id == user.id)
         .group_by(Project.id)
         .all()
     )
     shared_rows = (
-        db.query(Project, func.count(Submission.id).label("submission_count"), User.name)
+        db.query(Project, func.count(Submission.id).label("submission_count"), new_count_expr.label("new_count"), User.name)
         .join(ProjectShare, ProjectShare.project_id == Project.id)
         .join(User, Project.owner_id == User.id)
         .outerjoin(Submission, Submission.project_id == Project.id)
@@ -144,12 +183,14 @@ def list_my_projects(user: User = Depends(get_current_user), db: Session = Depen
     )
 
     result = []
-    for project, count in owned_rows:
+    for project, count, new_count in owned_rows:
         project.submission_count = count
+        project.new_submission_count = new_count or 0
         project.is_owner = True
         result.append(project)
-    for project, count, owner_name in shared_rows:
+    for project, count, new_count, owner_name in shared_rows:
         project.submission_count = count
+        project.new_submission_count = new_count or 0
         project.is_owner = False
         project.owner_name = owner_name
         result.append(project)
@@ -262,6 +303,7 @@ def update_project(project_id: int, payload: ProjectUpdate, user: User = Depends
     db.commit()
     db.refresh(project)
     project.submission_count = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id).scalar()
+    project.new_submission_count = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id, Submission.status == "new").scalar()
     project.is_owner = True
     return project
 
@@ -363,5 +405,6 @@ def transfer_ownership(project_id: int, payload: TransferOwnershipIn, user: User
     db.commit()
     db.refresh(project)
     project.submission_count = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id).scalar()
+    project.new_submission_count = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id, Submission.status == "new").scalar()
     project.is_owner = False
     return project

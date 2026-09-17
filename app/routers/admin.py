@@ -9,7 +9,7 @@ import secrets
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import Response
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from ..auth import destroy_all_sessions_for_user, hash_password, require_admin, require_superadmin
@@ -40,8 +40,9 @@ def _get_or_create_settings(db: Session) -> SiteSettings:
 
 @router.get("/projects", response_model=list[ProjectAdminOut])
 def list_all_projects(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    new_count_expr = func.sum(case((Submission.status == "new", 1), else_=0))
     rows = (
-        db.query(Project, User.email, func.count(Submission.id).label("submission_count"))
+        db.query(Project, User.email, User.name, func.count(Submission.id).label("submission_count"), new_count_expr.label("new_count"))
         .join(User, Project.owner_id == User.id)
         .outerjoin(Submission, Submission.project_id == Project.id)
         .group_by(Project.id)
@@ -50,9 +51,11 @@ def list_all_projects(admin: User = Depends(require_admin), db: Session = Depend
     )
     watched_ids = {w.project_id for w in db.query(WatchedForm).all()}
     result = []
-    for project, owner_email, count in rows:
+    for project, owner_email, owner_name, count, new_count in rows:
         project.submission_count = count
+        project.new_submission_count = new_count or 0
         project.owner_email = owner_email
+        project.owner_name = owner_name
         project.is_watched = project.id in watched_ids
         result.append(project)
     return result

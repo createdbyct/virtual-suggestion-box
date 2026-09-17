@@ -120,10 +120,10 @@ async function loadUsers() {
   allUsers = res.ok ? await res.json() : [];
 }
 
-function typeLabel(type) {
-  if (type === 'suggestion') return 'Suggestions';
-  if (type === 'nomination') return 'Nominations';
-  return 'Both';
+function typeBadges(type) {
+  if (type === 'suggestion') return `<span class="badge">Suggestions</span>`;
+  if (type === 'nomination') return `<span class="badge">Nominations</span>`;
+  return `<span class="badge">Suggestions</span> <span class="badge">Nominations</span>`;
 }
 
 // ---- Shared chrome: top bar + tabs ----
@@ -146,7 +146,6 @@ function renderTopBar() {
 function tabDefs() {
   const tabs = [{ id: 'my-forms', label: 'My Forms' }];
   if (currentUser.role === 'admin' || currentUser.role === 'superadmin') {
-    tabs.push({ id: 'all-forms', label: 'All Forms' });
     tabs.push({ id: 'users', label: 'Users' });
   }
   if (currentUser.role === 'superadmin') {
@@ -177,8 +176,7 @@ function bindChrome() {
 }
 
 function renderCurrentTab() {
-  if (activeTab === 'all-forms') renderAllFormsView();
-  else if (activeTab === 'users') renderUsersView();
+  if (activeTab === 'users') renderUsersView();
   else if (activeTab === 'site-settings') renderSiteSettingsView();
   else renderMyFormsView();
 }
@@ -607,12 +605,16 @@ function renderMyProjectList() {
       ? ''
       : `<span class="badge badge-muted">Shared by ${escapeHtml(p.owner_name || 'someone')}</span>`;
 
+    const needsReviewBadge = p.new_submission_count > 0
+      ? ` <span class="badge status-badge-new">${p.new_submission_count} need${p.new_submission_count === 1 ? 's' : ''} review</span>`
+      : '';
+
     return `
       <div class="project-row">
         <div class="project-row-top">
           <div>
-            <div class="project-row-title">${escapeHtml(p.title)} <span class="badge">${typeLabel(p.type)}</span> ${ownershipBadge}</div>
-            <div class="project-row-meta">${url} · ${p.submission_count} submission${p.submission_count === 1 ? '' : 's'}</div>
+            <div class="project-row-title">${escapeHtml(p.title)} ${typeBadges(p.type)} ${ownershipBadge}</div>
+            <div class="project-row-meta">${url} · <strong>${p.submission_count}</strong> submission${p.submission_count === 1 ? '' : 's'}${needsReviewBadge}</div>
           </div>
           <div class="project-row-actions">
             <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
@@ -713,7 +715,7 @@ async function renderSubmissionsPage(projectId) {
   card.innerHTML = `
     ${renderTopBar()}
     <a class="back-link" id="back-link">&larr; Back to your forms</a>
-    <h1>${escapeHtml(project.title)} <span class="badge">${typeLabel(project.type)}</span> ${ownershipBadge}</h1>
+    <h1>${escapeHtml(project.title)} ${typeBadges(project.type)} ${ownershipBadge}</h1>
     <p class="subtitle" style="font-family:'IBM Plex Mono',monospace; font-size:0.82rem;">${url}</p>
 
     <p class="section-title" id="submissions-count-label">Submissions</p>
@@ -854,7 +856,7 @@ async function renderEditPage(projectId, editTab) {
   card.innerHTML = `
     ${renderTopBar()}
     <a class="back-link" id="back-link">&larr; Back to your forms</a>
-    <h1>${escapeHtml(project.title)} <span class="badge">${typeLabel(project.type)}</span></h1>
+    <h1>${escapeHtml(project.title)} ${typeBadges(project.type)}</h1>
     <p class="subtitle" style="font-family:'IBM Plex Mono',monospace; font-size:0.82rem;">${url}</p>
     <button class="link-btn copy-link-btn" data-url="${url}" style="margin-bottom:4px;">Copy link</button>
     <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(project.title)}" style="margin-bottom:14px;">QR Code to share</button>
@@ -1180,33 +1182,38 @@ async function handleTransferOwnership(e, projectId, projectTitle) {
 
 // ---- All Forms tab (admin only) ----
 
-function renderAllFormsView() {
-  activeTab = 'all-forms';
+function renderUserFormsView(userId, userName) {
   card.innerHTML = `
     ${renderTopBar()}
-    ${renderTabs()}
-    <h1>All forms</h1>
-    <p class="subtitle">Every form across every owner.</p>
-    <div class="project-list" id="admin-project-list"></div>
+    <a class="back-link" id="back-link">&larr; Back to users</a>
+    <h1>${escapeHtml(userName)}'s forms</h1>
+    <p class="subtitle">Every form owned by this user.</p>
+    <div class="project-list" id="user-forms-list"></div>
   `;
+  document.getElementById('back-link').addEventListener('click', renderUsersView);
   bindChrome();
 
-  const list = document.getElementById('admin-project-list');
-  if (allProjects.length === 0) {
-    list.innerHTML = `<div class="empty-state">No forms have been created yet.</div>`;
+  const forms = allProjects.filter(p => p.owner_id === userId);
+  const list = document.getElementById('user-forms-list');
+  if (forms.length === 0) {
+    list.innerHTML = `<div class="empty-state">This user hasn't created any forms yet.</div>`;
     return;
   }
 
-  list.innerHTML = allProjects.map(p => {
+  list.innerHTML = forms.map(p => {
     const url = `${window.location.origin}/vb/${p.slug}`;
+    const needsReviewBadge = p.new_submission_count > 0
+      ? ` <span class="badge status-badge-new">${p.new_submission_count} need${p.new_submission_count === 1 ? 's' : ''} review</span>`
+      : '';
     return `
       <div class="project-row">
         <div class="project-row-top">
           <div>
-            <div class="project-row-title">${escapeHtml(p.title)} <span class="badge">${typeLabel(p.type)}</span></div>
-            <div class="project-row-meta">${escapeHtml(p.owner_email)} · ${url} · ${p.submission_count} submission${p.submission_count === 1 ? '' : 's'}</div>
+            <div class="project-row-title">${escapeHtml(p.title)} ${typeBadges(p.type)}</div>
+            <div class="project-row-meta">${url} · <strong>${p.submission_count}</strong> submission${p.submission_count === 1 ? '' : 's'}${needsReviewBadge}</div>
           </div>
           <div class="project-row-actions">
+            <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
             <button class="link-btn view-admin-submissions-btn" data-id="${p.id}">View submissions</button>
           </div>
         </div>
@@ -1228,14 +1235,14 @@ async function renderAdminSubmissionsView(projectId) {
 
   card.innerHTML = `
     ${renderTopBar()}
-    <a class="back-link" id="back-link">&larr; Back to all forms</a>
-    <h1>${escapeHtml(project.title)} <span class="badge">${typeLabel(project.type)}</span></h1>
+    <a class="back-link" id="back-link">&larr; Back to ${escapeHtml(project.owner_name || project.owner_email)}'s forms</a>
+    <h1>${escapeHtml(project.title)} ${typeBadges(project.type)}</h1>
     <p class="subtitle">Owned by ${escapeHtml(project.owner_email)} · ${submissions.length} submission${submissions.length === 1 ? '' : 's'}</p>
     <button class="link-btn" id="admin-export-btn" style="margin-bottom:16px;">Export CSV</button>
     <div class="submission-list" id="submission-list"></div>
   `;
 
-  document.getElementById('back-link').addEventListener('click', renderAllFormsView);
+  document.getElementById('back-link').addEventListener('click', () => renderUserFormsView(project.owner_id, project.owner_name || project.owner_email));
   document.getElementById('admin-export-btn').addEventListener('click', () => {
     window.location.href = `/api/admin/projects/${projectId}/export.csv`;
   });
@@ -1410,6 +1417,7 @@ function renderUsersView() {
           <div class="user-row-meta">@${escapeHtml(u.username)} · ${escapeHtml(u.email)} · ${u.project_count} form${u.project_count === 1 ? '' : 'es'} · joined ${joined}${u.totp_enabled ? ' · 2FA on' : ''}${isSelf ? ' · this is you' : ''}</div>
         </div>
         <div class="project-row-actions">
+          <button class="link-btn view-user-forms-btn" data-id="${u.id}" data-name="${escapeAttr(u.name)}">View forms (${u.project_count})</button>
           ${canManage ? `
             ${isTargetSuperadmin ? '' : `<button class="link-btn role-btn" data-id="${u.id}" data-role="${u.role}">${u.role === 'admin' ? 'Make owner' : 'Make admin'}</button>`}
             <button class="link-btn active-btn" data-id="${u.id}" data-active="${u.is_active}">${u.is_active ? 'Disable' : 'Enable'}</button>
@@ -1420,6 +1428,10 @@ function renderUsersView() {
       </div>
     `;
   }).join('');
+
+  list.querySelectorAll('.view-user-forms-btn').forEach(btn => {
+    btn.addEventListener('click', () => renderUserFormsView(parseInt(btn.dataset.id), btn.dataset.name));
+  });
 
   list.querySelectorAll('.role-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1459,7 +1471,8 @@ async function handleAdminResetPassword(userId, name) {
 
 // ---- Site Settings tab (superadmin only) ----
 
-async function renderSiteSettingsView() {
+async function renderSiteSettingsView(settingsTab) {
+  settingsTab = settingsTab || 'general';
   activeTab = 'site-settings';
   card.innerHTML = `${renderTopBar()}${renderTabs()}<p class="subtitle">Loading…</p>`;
 
@@ -1477,14 +1490,20 @@ async function renderSiteSettingsView() {
     ? `Last backup: ${new Date(settings.last_backup_at).toLocaleString()}`
     : 'No backups yet — export one now, or set up the scheduled script (see install.md).';
 
-  card.innerHTML = `
-    ${renderTopBar()}
-    ${renderTabs()}
-    <h1>Site settings</h1>
-    <p class="subtitle">Configuration that applies across the whole site, not just your account.</p>
+  const settingsTabs = [
+    { id: 'general', label: 'General' },
+    { id: 'notifications', label: 'Notifications' },
+    { id: 'backups', label: 'Backups' },
+  ];
+  const settingsTabRow = `
+    <div class="tab-row">
+      ${settingsTabs.map(t => `<button type="button" class="tab-btn ${settingsTab === t.id ? 'active' : ''}" data-settings-tab="${t.id}">${t.label}</button>`).join('')}
+    </div>
+  `;
 
-    <form id="site-settings-form">
-      <p class="section-title">Footer credit</p>
+  const generalTabHtml = `
+    <form id="general-settings-form">
+      <p class="section-title" style="margin-top:0;">Footer credit</p>
       <label for="footer-text">Footer text <span class="hint">(shown on the homepage — leave blank to hide it)</span></label>
       <input type="text" id="footer-text" value="${escapeAttr(settings.footer_text || '')}" placeholder="e.g. Built by Christian Taylor">
 
@@ -1498,8 +1517,15 @@ async function renderSiteSettingsView() {
       </div>
       <p class="hint" style="display:block; margin-top:6px;">Unchecking this hides the theme toggle everywhere and forces light mode for every visitor, regardless of their own preference.</p>
 
-      <p class="section-title" style="margin-top:28px;">Global notifications</p>
-      <p class="hint" style="display:block; margin-bottom:10px;">No per-form notification options exist — this is the only place to configure them, and it applies to whichever forms you pick below, no matter who owns them.</p>
+      <p class="error-msg" id="general-settings-error"></p>
+      <button type="submit" id="general-settings-save-btn" style="margin-top:24px;">Save settings</button>
+    </form>
+  `;
+
+  const notificationsTabHtml = `
+    <form id="notification-settings-form">
+      <p class="section-title" style="margin-top:0;">Global notifications</p>
+      <p class="hint" style="display:block; margin-bottom:10px;">No per-form notification options exist — this is the only place to configure them, and it applies to whichever forms you pick below, no matter who owns them. New forms are watched automatically.</p>
       <label for="global-webhook-url">Slack, Discord, or ntfy.sh webhook URL <span class="hint">(optional)</span></label>
       <input type="text" id="global-webhook-url" value="${escapeAttr(settings.notification_webhook_url || '')}" placeholder="https://hooks.slack.com/services/… or https://ntfy.sh/your-topic">
 
@@ -1537,15 +1563,17 @@ async function renderSiteSettingsView() {
         </div>
       </div>
 
-      <p class="error-msg" id="site-settings-error"></p>
-      <button type="submit" id="site-settings-save-btn" style="margin-top:24px;">Save settings</button>
+      <p class="error-msg" id="notification-settings-error"></p>
+      <button type="submit" id="notification-settings-save-btn" style="margin-top:24px;">Save settings</button>
     </form>
 
     <p class="section-title" style="margin-top:20px;">Forms to notify me about</p>
-    <p class="hint" style="display:block; margin-bottom:12px;">Only applies once a webhook URL is saved above.</p>
+    <p class="hint" style="display:block; margin-bottom:12px;">Only applies once a webhook URL or notification email is saved above.</p>
     <div class="project-list" id="watch-list"></div>
+  `;
 
-    <p class="section-title" style="margin-top:32px;">Backups</p>
+  const backupsTabHtml = `
+    <p class="section-title" style="margin-top:0;">Backups</p>
     <p class="hint" style="display:block; margin-bottom:6px;">Every user, form, submission, and setting — as structured data, not a raw database file, so it still works after an update changes the schema. Export before pulling any update that requires wiping the database.</p>
     <p class="hint" style="display:block; margin-bottom:14px; font-weight:600;" id="last-backup-label">${lastBackupText}</p>
 
@@ -1560,14 +1588,36 @@ async function renderSiteSettingsView() {
     </div>
   `;
 
-  bindChrome();
-  document.getElementById('site-settings-form').addEventListener('submit', handleSaveSiteSettings);
-  document.getElementById('export-backup-btn').addEventListener('click', () => {
-    window.location.href = '/api/admin/export';
-  });
-  document.getElementById('import-backup-btn').addEventListener('click', handleImportBackup);
+  const tabContent = settingsTab === 'notifications' ? notificationsTabHtml
+    : settingsTab === 'backups' ? backupsTabHtml
+    : generalTabHtml;
 
-  renderWatchList(allFormsForWatch);
+  card.innerHTML = `
+    ${renderTopBar()}
+    ${renderTabs()}
+    <h1>Site settings</h1>
+    <p class="subtitle">Configuration that applies across the whole site, not just your account.</p>
+
+    ${settingsTabRow}
+    ${tabContent}
+  `;
+
+  bindChrome();
+  document.querySelectorAll('[data-settings-tab]').forEach(btn => {
+    btn.addEventListener('click', () => renderSiteSettingsView(btn.dataset.settingsTab));
+  });
+
+  if (settingsTab === 'general') {
+    document.getElementById('general-settings-form').addEventListener('submit', handleSaveGeneralSettings);
+  } else if (settingsTab === 'notifications') {
+    document.getElementById('notification-settings-form').addEventListener('submit', handleSaveNotificationSettings);
+    renderWatchList(allFormsForWatch);
+  } else if (settingsTab === 'backups') {
+    document.getElementById('export-backup-btn').addEventListener('click', () => {
+      window.location.href = '/api/admin/export';
+    });
+    document.getElementById('import-backup-btn').addEventListener('click', handleImportBackup);
+  }
 }
 
 function renderWatchList(forms) {
@@ -1659,17 +1709,49 @@ async function handleImportBackup() {
   window.location.href = '/login';
 }
 
-async function handleSaveSiteSettings(e) {
+async function handleSaveGeneralSettings(e) {
   e.preventDefault();
-  const errorEl = document.getElementById('site-settings-error');
-  const btn = document.getElementById('site-settings-save-btn');
+  const errorEl = document.getElementById('general-settings-error');
+  const btn = document.getElementById('general-settings-save-btn');
   errorEl.classList.remove('visible');
 
-  const smtpPortRaw = document.getElementById('smtp-port').value.trim();
   const payload = {
     footer_text: document.getElementById('footer-text').value.trim() || null,
     footer_link_url: document.getElementById('footer-link').value.trim() || null,
     dark_mode_enabled: document.getElementById('dark-mode-enabled').checked,
+  };
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const res = await fetch('/api/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || 'Something went wrong.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Save settings';
+    return;
+  }
+
+  showToast('Site settings saved');
+  btn.disabled = false;
+  btn.textContent = 'Save settings';
+}
+
+async function handleSaveNotificationSettings(e) {
+  e.preventDefault();
+  const errorEl = document.getElementById('notification-settings-error');
+  const btn = document.getElementById('notification-settings-save-btn');
+  errorEl.classList.remove('visible');
+
+  const smtpPortRaw = document.getElementById('smtp-port').value.trim();
+  const payload = {
     notification_webhook_url: document.getElementById('global-webhook-url').value.trim() || null,
     notification_email: document.getElementById('global-notify-email').value.trim() || null,
     smtp_host: document.getElementById('smtp-host').value.trim() || null,

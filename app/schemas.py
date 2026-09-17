@@ -391,6 +391,7 @@ class ProjectOut(BaseModel):
     slug: str
     created_at: datetime
     submission_count: int = 0
+    new_submission_count: int = 0
     is_owner: bool = True
     owner_name: Optional[str] = None  # populated only for forms shared with you
 
@@ -451,5 +452,6 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectAdminOut(ProjectOut):
+    owner_id: int
     owner_email: str
     is_watched: bool = False

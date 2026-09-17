@@ -12,10 +12,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - `/login` — log in with email *or* username, plus your authenticator code (or a recovery code) if 2FA is on
 - `/forgot-password` and `/reset-password/{token}` — password recovery (see below)
 - `/dashboard` (or `/admin` — same page) — "My Forms" for everyone; admins
-  additionally see "All Forms" and "Users". Each form has one **Open**
-  button leading to its detail page — settings, submissions, sharing, and
-  delete all live there together (owners only see the management sections;
-  people a form is shared with just see submissions + export).
+  additionally see a "Users" tab, from which each user's forms can be
+  drilled into (view submissions, or open the form directly).
 - `/vb/{slug}` — public submission page for a form
 - `/edit/{token}` — public edit page, valid for 24hrs after a submission
 
@@ -27,7 +25,7 @@ A dark mode toggle (🌙/☀️) sits in the top-right corner of every page.
 ```bash
 python3 promote_admin.py your@email.com admin
 ```
-3. Reload `/dashboard` — you'll see the "All Forms" and "Users" tabs alongside your own forms.
+3. Reload `/dashboard` — you'll see the "Users" tab alongside your own forms.
 
 There's a tier above admin too — see **Super admin & site settings** below.
 
@@ -97,7 +95,7 @@ that only appears for this role:
 - **Footer credit** — text and an optional link shown at the bottom of the homepage (e.g. "Built by Christian Taylor" linking to a resume/portfolio site). Leave the text blank to hide it entirely.
 - **Dark mode on/off, site-wide** — disabling it removes the theme toggle from every page and forces light mode for every visitor, overriding their own browser/system preference.
 
-A superadmin also has every regular admin capability (All Forms, Users tab, etc.) plus their own forms like any owner — it's a strict superset, not a separate parallel role.
+A superadmin also has every regular admin capability (Users tab and its forms drill-down, etc.) plus their own forms like any owner — it's a strict superset, not a separate parallel role.
 
 There's no path to this role through the app at all, not even for another admin — it's promoted the same way as admin, via the script, just with the role argument:
 ```bash

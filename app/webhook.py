@@ -56,3 +56,7 @@ def build_submission_message(project_title: str, submitter_name, is_anonymous: b
             lines.append(f"   Reason: {preview}")
 
     return "\n".join(lines)
+
+
+def build_new_form_message(project_title: str, owner_name: str) -> str:
+    return f"✨ New form created: \"{project_title}\" — by {owner_name}"
