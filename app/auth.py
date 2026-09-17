@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import Cookie, Depends, HTTPException
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session as DbSession
 
 from .database import get_db
@@ -86,6 +87,20 @@ def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been disabled")
     return user
+
+
+def find_user_by_identifier(identifier: str, db: DbSession) -> Optional[User]:
+    """Case-insensitive match on email or username — a password manager
+    that auto-capitalizes the first letter, or someone just typing
+    ChristianT instead of christiant, should still work. Used everywhere
+    an identifier gets resolved: login, forgot-password, sharing, and
+    ownership transfer, so behavior can't drift between those call sites."""
+    identifier_lower = identifier.lower()
+    return (
+        db.query(User)
+        .filter(or_(func.lower(User.email) == identifier_lower, func.lower(User.username) == identifier_lower))
+        .first()
+    )
 
 
 def require_admin(user: User = Depends(get_current_user)) -> User:

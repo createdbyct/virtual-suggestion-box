@@ -10,13 +10,13 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
-from sqlalchemy import or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..auth import (
     hash_password, verify_password, create_session, destroy_session,
-    destroy_all_sessions_for_user, get_current_user, SESSION_COOKIE_NAME,
-    SESSION_COOKIE_SECURE,
+    destroy_all_sessions_for_user, get_current_user, find_user_by_identifier,
+    SESSION_COOKIE_NAME, SESSION_COOKIE_SECURE,
 )
 from ..database import get_db
 from ..models import User, AuthSession, PasswordResetToken, RecoveryCode
@@ -52,15 +52,15 @@ def _set_session_cookie(response: Response, token: str, expires_at) -> None:
 
 @router.post("/register", response_model=UserOut)
 def register(payload: RegisterIn, response: Response, request: Request, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.email == payload.email).first():
+    if db.query(User).filter(func.lower(User.email) == payload.email.lower()).first():
         raise HTTPException(status_code=400, detail="An account with this email already exists")
-    if db.query(User).filter(User.username == payload.username).first():
+    if db.query(User).filter(func.lower(User.username) == payload.username.lower()).first():
         raise HTTPException(status_code=400, detail="That username is already taken")
 
     user = User(
         name=payload.name,
         username=payload.username,
-        email=payload.email,
+        email=payload.email.lower(),  # emails have no meaningful case identity — normalize once, at the source
         password_hash=hash_password(payload.password),
         role="owner",
     )
@@ -83,11 +83,7 @@ def login(payload: LoginIn, response: Response, request: Request, db: Session = 
         minutes = max(1, int(remaining // 60) + 1)
         raise HTTPException(status_code=429, detail=f"Too many failed attempts — try again in about {minutes} minute{'s' if minutes != 1 else ''}")
 
-    user = (
-        db.query(User)
-        .filter(or_(User.email == payload.identifier, User.username == payload.identifier))
-        .first()
-    )
+    user = find_user_by_identifier(payload.identifier, db)
     if not user or not verify_password(payload.password, user.password_hash):
         record_login_failure(lockout_key)
         raise HTTPException(status_code=401, detail="Incorrect email/username or password")
@@ -158,11 +154,7 @@ def forgot_password(payload: ForgotPasswordIn, request: Request, db: Session = D
     if not check_rate_limit(f"forgot:{ip}", max_hits=5, window_seconds=600):
         raise HTTPException(status_code=429, detail="Too many requests — try again shortly")
 
-    user = (
-        db.query(User)
-        .filter(or_(User.email == payload.identifier, User.username == payload.identifier))
-        .first()
-    )
+    user = find_user_by_identifier(payload.identifier, db)
     if not user:
         raise HTTPException(status_code=404, detail="No account found with that email or username")
 

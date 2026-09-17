@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..auth import get_current_user, find_user_by_identifier
 from ..database import get_db
 from ..models import Project, ProjectShare, Submission, Nominee, User
 from ..schemas import (
@@ -37,10 +37,6 @@ def _unique_slug(base_slug: str, db: Session) -> str:
         slug = f"{base_slug}-{n}"
         n += 1
     return slug
-
-
-def _find_user_by_identifier(identifier: str, db: Session) -> Optional[User]:
-    return db.query(User).filter(or_(User.email == identifier, User.username == identifier)).first()
 
 
 def build_submissions_csv(project: Project, submissions: list[Submission]) -> StreamingResponse:
@@ -309,7 +305,7 @@ def list_shares(project_id: int, user: User = Depends(get_current_user), db: Ses
 def add_share(project_id: int, payload: ShareIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     project = _get_owned_project_or_404(project_id, user, db)
 
-    target = _find_user_by_identifier(payload.identifier, db)
+    target = find_user_by_identifier(payload.identifier, db)
     if not target:
         raise HTTPException(status_code=404, detail="No account found with that email or username")
     if target.id == user.id:
@@ -342,7 +338,7 @@ def remove_share(project_id: int, user_id: int, user: User = Depends(get_current
 def transfer_ownership(project_id: int, payload: TransferOwnershipIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     project = _get_owned_project_or_404(project_id, user, db)
 
-    target = _find_user_by_identifier(payload.identifier, db)
+    target = find_user_by_identifier(payload.identifier, db)
     if not target:
         raise HTTPException(status_code=404, detail="No account found with that email or username")
     if target.id == user.id:
