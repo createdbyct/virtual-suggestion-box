@@ -235,7 +235,6 @@ function showError(msg) {
 
 function renderConfirmation(data) {
   const editUrl = `${window.location.origin}${data.edit_url}`;
-  const expires = new Date(data.edit_expires_at);
   card.innerHTML = `
     <div class="confirmation">
       <div class="stamp-mark">✓</div>
@@ -243,7 +242,6 @@ function renderConfirmation(data) {
       <p class="subtitle">Your submission has been received.</p>
       <div class="edit-link-box">
         <a href="${editUrl}" class="link-btn" style="width:100%; justify-content:center;">View your submission</a>
-        <p class="timestamp" style="margin-top:10px;">Available until ${expires.toLocaleString()}</p>
       </div>
     </div>
   `;
