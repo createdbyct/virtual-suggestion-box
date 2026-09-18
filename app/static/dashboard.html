@@ -569,6 +569,9 @@ function showNewFormModal() {
           <option value="nomination">Nominations only</option>
         </select>
 
+        <label for="description">Description <span class="hint">(optional)</span></label>
+        <textarea id="description" rows="2" placeholder="Shown to whoever opens the form — leave blank for a generic default"></textarea>
+
         <p class="hint" style="margin-top:10px; display:block;">Every form always accepts anonymous submissions — people can optionally leave their name.</p>
 
         <p class="error-msg" id="create-error"></p>
@@ -646,6 +649,7 @@ async function handleCreate(e) {
   const payload = {
     title: document.getElementById('title').value.trim(),
     type: document.getElementById('type').value,
+    description: document.getElementById('description').value.trim() || null,
   };
 
   btn.disabled = true;
@@ -799,6 +803,9 @@ async function renderEditPage(projectId, editTab) {
         <option value="suggestion" ${project.type === 'suggestion' ? 'selected' : ''}>Suggestions only</option>
         <option value="nomination" ${project.type === 'nomination' ? 'selected' : ''}>Nominations only</option>
       </select>
+
+      <label for="edit-description">Description <span class="hint">(optional)</span></label>
+      <textarea id="edit-description" rows="2" placeholder="Shown to whoever opens the form — leave blank for a generic default">${escapeHtml(project.description || '')}</textarea>
 
       <p class="error-msg" id="edit-error"></p>
       <button type="submit" id="edit-save-btn">Save changes</button>
@@ -1006,6 +1013,7 @@ async function handleEditSave(e, projectId) {
   const payload = {
     title: document.getElementById('edit-title').value.trim(),
     type: document.getElementById('edit-type').value,
+    description: document.getElementById('edit-description').value.trim() || null,
   };
 
   btn.disabled = true;

@@ -50,6 +50,9 @@ class Project(Base):
     title = Column(String, nullable=False)
     type = Column(String, nullable=False)  # 'suggestion' | 'nomination' | 'both'
     slug = Column(String, unique=True, nullable=False, index=True)
+    # Optional — shown as the form's subtitle on the public page if set;
+    # falls back to a generic per-type description if left blank.
+    description = Column(String, nullable=True)
     # Every form always accepts anonymous submissions — a name is optional,
     # never required — so there's no per-form toggle for it anymore.
     # Notifications are superadmin-only and global (see SiteSettings +

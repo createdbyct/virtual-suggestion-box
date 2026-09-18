@@ -58,20 +58,6 @@ class SubmissionCreate(BaseModel):
         return v or None
 
 
-class SubmissionEdit(BaseModel):
-    suggestion_text: Optional[str] = None
-    nomination_reason: Optional[str] = None
-    nominees: Optional[List[NomineeIn]] = None
-
-    @field_validator("suggestion_text", "nomination_reason")
-    @classmethod
-    def strip_or_none(cls, v):
-        if v is None:
-            return None
-        v = v.strip()
-        return v or None
-
-
 class SubmissionOut(BaseModel):
     id: int
     suggestion_text: Optional[str]
@@ -123,6 +109,7 @@ class ProjectPublicOut(BaseModel):
     """What a public visitor is allowed to see about a project."""
     title: str
     type: str  # 'suggestion' | 'nomination' | 'both'
+    description: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -353,6 +340,7 @@ class RecoveryCodesOut(BaseModel):
 class ProjectCreate(BaseModel):
     title: str
     type: str  # 'suggestion' | 'nomination' | 'both'
+    description: Optional[str] = None  # shown as the form's subtitle if set; generic fallback otherwise
     # No custom/vanity link option — every form gets a short random code
     # (see _generate_short_code in routers/projects.py).
 
@@ -363,6 +351,14 @@ class ProjectCreate(BaseModel):
         if not v:
             raise ValueError("title cannot be blank")
         return v
+
+    @field_validator("description")
+    @classmethod
+    def description_blank_to_none(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
     @field_validator("type")
     @classmethod
@@ -377,6 +373,7 @@ class ProjectOut(BaseModel):
     title: str
     type: str
     slug: str
+    description: Optional[str] = None
     created_at: datetime
     submission_count: int = 0
     new_submission_count: int = 0
@@ -406,6 +403,7 @@ class ProjectUpdate(BaseModel):
     """All fields optional — PATCH semantics, only provided fields change."""
     title: Optional[str] = None
     type: Optional[str] = None
+    description: Optional[str] = None
 
     @field_validator("title")
     @classmethod
@@ -416,6 +414,14 @@ class ProjectUpdate(BaseModel):
         if not v:
             raise ValueError("title cannot be blank")
         return v
+
+    @field_validator("description")
+    @classmethod
+    def description_blank_to_none(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
     @field_validator("type")
     @classmethod

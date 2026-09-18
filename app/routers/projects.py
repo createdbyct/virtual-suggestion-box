@@ -114,6 +114,7 @@ def create_project(payload: ProjectCreate, background_tasks: BackgroundTasks, us
         title=payload.title,
         type=payload.type,
         slug=slug,
+        description=payload.description,
     )
     db.add(project)
     db.commit()
@@ -281,6 +282,8 @@ def update_project(project_id: int, payload: ProjectUpdate, user: User = Depends
         project.title = payload.title
     if payload.type is not None:
         project.type = payload.type
+    if "description" in payload.model_fields_set:
+        project.description = payload.description
 
     db.commit()
     db.refresh(project)

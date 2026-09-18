@@ -13,7 +13,7 @@ from ..mailer import get_smtp_config, is_smtp_configured, send_email
 from ..models import Project, Submission, Nominee, WatchedForm, SiteSettings
 from ..rate_limit import check_rate_limit, get_client_ip
 from ..schemas import (
-    SubmissionCreate, SubmissionEdit, SubmissionOut,
+    SubmissionCreate, SubmissionOut,
     SubmissionConfirmation, ProjectPublicOut,
 )
 from ..webhook import send_webhook_notification, build_submission_message
@@ -124,51 +124,24 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
     )
 
 
-def _get_editable_submission_or_404(token: str, db: Session) -> Submission:
+def _get_viewable_submission_or_404(token: str, db: Session) -> Submission:
+    """Read-only — there's no edit capability on this token anymore, just
+    viewing your own submission. Still expires after the same window;
+    the field is still called edit_token/edit_expires_at internally to
+    avoid an unnecessary rename, but functionally it's now a view link."""
     submission = db.query(Submission).filter(Submission.edit_token == token).first()
     if not submission:
-        raise HTTPException(status_code=404, detail="Edit link not found")
+        raise HTTPException(status_code=404, detail="Link not found")
     if datetime.utcnow() > submission.edit_expires_at:
-        raise HTTPException(status_code=410, detail="Edit window has expired")
+        raise HTTPException(status_code=410, detail="This link has expired")
     return submission
 
 
-# Separate router (mounted at /api/edit instead of /api/b) since edit links
-# are token-based and don't belong under a specific form's slug path.
+# Separate router (mounted at /api/edit instead of /api/b) since these
+# links are token-based and don't belong under a specific form's slug path.
 edit_router = APIRouter(prefix="/api/edit", tags=["public-edit"])
 
 
 @edit_router.get("/{token}", response_model=SubmissionOut)
-def get_submission_for_edit(token: str, db: Session = Depends(get_db)):
-    return _get_editable_submission_or_404(token, db)
-
-
-@edit_router.put("/{token}", response_model=SubmissionOut)
-def edit_submission(token: str, payload: SubmissionEdit, db: Session = Depends(get_db)):
-    submission = _get_editable_submission_or_404(token, db)
-    project = submission.project
-
-    has_suggestion = bool(payload.suggestion_text)
-    has_nomination = bool(payload.nominees)
-
-    if not has_suggestion and not has_nomination:
-        raise HTTPException(status_code=400, detail="Add a suggestion, a nomination, or both")
-
-    # Keep edits within what the form actually supports.
-    if project.type == "suggestion" and has_nomination:
-        raise HTTPException(status_code=400, detail="This form doesn't accept nominations")
-    if project.type == "nomination" and has_suggestion:
-        raise HTTPException(status_code=400, detail="This form doesn't accept suggestions")
-
-    submission.suggestion_text = payload.suggestion_text if has_suggestion else None
-    submission.nomination_reason = payload.nomination_reason if has_nomination else None
-
-    submission.nominees.clear()
-    if has_nomination:
-        submission.nominees = [
-            Nominee(name=n.name, role=n.role) for n in payload.nominees
-        ]
-
-    db.commit()
-    db.refresh(submission)
-    return submission
+def get_submission_for_viewing(token: str, db: Session = Depends(get_db)):
+    return _get_viewable_submission_or_404(token, db)

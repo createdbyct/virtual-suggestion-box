@@ -15,7 +15,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
   additionally see a "Users" tab, from which each user's forms can be
   drilled into (view submissions, or open the form directly).
 - `/vb/{slug}` — public submission page for a form
-- `/edit/{token}` — public edit page, valid for 24hrs after a submission
+- `/edit/{token}` — read-only view of your own submission, valid for 24hrs after submitting (submissions can't be edited, only viewed)
 
 A dark mode toggle (🌙/☀️) sits in the top-right corner of every page.
 
@@ -48,7 +48,7 @@ Implementation note: TOTP (RFC 6238) is implemented directly with the standard l
 
 **If SMTP isn't configured**, the app falls back to handing the link back directly on-screen instead — functionally the same as clicking a reset link, just without the email round-trip. Treat that link like a password: anyone with it can reset the account. This is also what happens automatically if SMTP is configured but the actual send fails for some reason (bad credentials, host unreachable) — nobody gets locked out of resetting just because email delivery broke.
 
-Submission edit links and new-submission notifications are intentionally *not* emailed — only password reset uses this. Implementation is stdlib `smtplib` only, no extra package to install.
+Submission view links and new-submission notifications are intentionally *not* emailed — only password reset uses this. Implementation is stdlib `smtplib` only, no extra package to install.
 
 As a backup path, an admin can reset any user's password directly from the Users tab — this generates a temporary password shown once to the admin, who's responsible for getting it to the account holder out of band (Slack, in person, etc.).
 
@@ -72,7 +72,7 @@ Each form (`Project`) has a `type`:
 - `'nomination'` — submitters only see nominee fields (name + role, can add several)
 - `'both'` — submitters check "I have a suggestion" and/or "I want to nominate someone," and fill in whichever they pick
 
-Every form always accepts anonymous submissions. A submitter can optionally give their name (and email, which unlocks the 24hr edit link); leaving it blank submits anonymously.
+Every form always accepts anonymous submissions. A submitter can optionally give their name (and email, which unlocks a 24hr link to view what they submitted — it's read-only, not an edit link); leaving it blank submits anonymously.
 
 ## Reviewing submissions
 Each submission has a status — `new`, `reviewed`, or `done` — that the owner or anyone the form is shared with can update inline while browsing. The submissions list supports text search (matches suggestion text, nomination reason, submitter name, and nominee names) and a status filter, both server-side and paginated (10 per page) so this stays usable once a form has hundreds of entries. Deleting an individual submission is owner-only, unlike status updates or viewing, which shared viewers can also do.
@@ -122,6 +122,6 @@ Regular admins can't view, disable, delete, or reset the password of a superadmi
 - CSV export (including status) is available to owners, anyone the form is shared with, and admins (for any form).
 
 ## Still to build
-- Email for the 24hr submission-edit link (intentionally out of scope — only password reset uses email, see above)
+- Email for the 24hr submission-view link (intentionally out of scope — only password reset uses email, see above)
 - Per-project Google Sheets export
 - Shared Redis-backed rate limiting / lockout if this ever runs across multiple worker processes

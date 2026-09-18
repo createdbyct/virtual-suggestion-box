@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Edit your submission — Virtual Suggestion Box</title>
+<title>Your submission — Virtual Suggestion Box</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/theme.js"></script>
@@ -17,7 +17,6 @@
 <script>
 const token = window.location.pathname.split('/').filter(Boolean).pop();
 const card = document.getElementById('card');
-let nomineeCount = 0;
 
 async function loadSubmission() {
   let res;
@@ -29,192 +28,56 @@ async function loadSubmission() {
   }
 
   if (res.status === 410) {
-    card.innerHTML = `<h1>Edit window closed</h1><p class="subtitle">This submission can no longer be edited — the 24hr window has passed.</p>`;
+    card.innerHTML = `<h1>Link expired</h1><p class="subtitle">This link is no longer available — it expires 24hrs after submitting.</p>`;
     return;
   }
   if (!res.ok) {
-    card.innerHTML = `<h1>Not found</h1><p class="subtitle">This edit link isn't valid.</p>`;
+    card.innerHTML = `<h1>Not found</h1><p class="subtitle">This link isn't valid.</p>`;
     return;
   }
 
   const submission = await res.json();
-  const hasNomination = Array.isArray(submission.nominees) && submission.nominees.length > 0;
-  document.body.setAttribute('data-kind', hasNomination && !submission.suggestion_text ? 'nomination' : 'suggestion');
-  renderForm(submission, hasNomination);
+  renderSubmission(submission);
 }
 
-function renderForm(submission, hasNomination) {
+function renderSubmission(submission) {
   const hasSuggestion = !!submission.suggestion_text;
+  const hasNomination = Array.isArray(submission.nominees) && submission.nominees.length > 0;
   const isBoth = hasSuggestion && hasNomination;
+  const statusLabels = { new: 'New', reviewed: 'Reviewed', done: 'Done' };
+  const when = new Date(submission.created_at).toLocaleString();
+  const who = submission.is_anonymous
+    ? 'Submitted anonymously'
+    : 'Submitted' + (submission.submitter_name ? ` by ${escapeHtml(submission.submitter_name)}` : '');
 
-  card.innerHTML = `
-    <div class="stamp">EDIT</div>
-    <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : (hasNomination ? 'Employee recognition' : 'Idea form')}</p>
-    <h1>Edit your submission</h1>
-    <p class="subtitle">You can update this until the 24hr window closes.</p>
-
-    <form id="edit-form">
-      <div class="section-toggle">
-        <label class="toggle-option">
-          <input type="checkbox" id="toggle-suggestion" ${hasSuggestion ? 'checked' : ''}>
-          <span>💡 Suggestion</span>
-        </label>
-        <label class="toggle-option">
-          <input type="checkbox" id="toggle-nomination" ${hasNomination ? 'checked' : ''}>
-          <span>🏆 Nomination</span>
-        </label>
-      </div>
-
-      <div class="panel ${hasSuggestion ? '' : 'hidden'}" id="suggestion-panel">
-        <label for="suggestion_text">Your suggestion</label>
-        <textarea id="suggestion_text" placeholder="What's the idea?">${escapeHtml(submission.suggestion_text || '')}</textarea>
-      </div>
-
-      <div class="panel ${hasNomination ? '' : 'hidden'}" id="nomination-panel">
-        <label>Who are you nominating? <span class="hint">— add as many as you like</span></label>
-        <div class="nominees-list" id="nominees-list"></div>
-        <button type="button" class="add-nominee-btn" id="add-nominee-btn">+ Add another nominee</button>
-        <label for="nomination_reason">Why do they deserve it?</label>
-        <textarea id="nomination_reason" placeholder="What did they do?">${escapeHtml(submission.nomination_reason || '')}</textarea>
-      </div>
-
-      <p class="error-msg" id="error-msg"></p>
-      <button type="submit" id="save-btn">Save changes</button>
-    </form>
-  `;
-
-  (submission.nominees || []).forEach(n => addNomineeRow(n.name, n.role));
-  if (hasNomination && (submission.nominees || []).length === 0) {
-    addNomineeRow();
+  let body = '';
+  if (hasSuggestion) {
+    body += `<div class="field-label">Suggestion</div><div style="margin-bottom:20px; white-space:pre-wrap;">${escapeHtml(submission.suggestion_text)}</div>`;
   }
-
-  document.getElementById('add-nominee-btn').addEventListener('click', () => addNomineeRow());
-
-  const toggleSuggestion = document.getElementById('toggle-suggestion');
-  const toggleNomination = document.getElementById('toggle-nomination');
-  const suggestionPanel = document.getElementById('suggestion-panel');
-  const nominationPanel = document.getElementById('nomination-panel');
-
-  toggleSuggestion.addEventListener('change', () => {
-    suggestionPanel.classList.toggle('hidden', !toggleSuggestion.checked);
-  });
-  toggleNomination.addEventListener('change', () => {
-    nominationPanel.classList.toggle('hidden', !toggleNomination.checked);
-    if (toggleNomination.checked && document.querySelectorAll('#nominees-list .nominee-row').length === 0) {
-      addNomineeRow();
-    }
-  });
-
-  document.getElementById('edit-form').addEventListener('submit', handleSave);
-}
-
-function addNomineeRow(name = '', role = '') {
-  nomineeCount++;
-  const list = document.getElementById('nominees-list');
-  const row = document.createElement('div');
-  row.className = 'nominee-row';
-  row.innerHTML = `
-    <span class="nominee-number">Nominee ${nomineeCount}</span>
-    <input type="text" class="nominee-name" placeholder="Name" value="${escapeAttr(name)}" required>
-    <input type="text" class="nominee-role" placeholder="Role (optional)" value="${escapeAttr(role || '')}">
-    <button type="button" class="remove-nominee" aria-label="Remove nominee">×</button>
-  `;
-  row.querySelector('.remove-nominee').addEventListener('click', () => {
-    row.remove();
-    renumberNominees();
-  });
-  list.appendChild(row);
-}
-
-function renumberNominees() {
-  const rows = document.querySelectorAll('#nominees-list .nominee-row');
-  rows.forEach((row, i) => {
-    row.querySelector('.nominee-number').textContent = `Nominee ${i + 1}`;
-  });
-  nomineeCount = rows.length;
-}
-
-async function handleSave(e) {
-  e.preventDefault();
-  const errorEl = document.getElementById('error-msg');
-  const btn = document.getElementById('save-btn');
-  errorEl.classList.remove('visible');
-
-  const includeSuggestion = document.getElementById('toggle-suggestion').checked;
-  const includeNomination = document.getElementById('toggle-nomination').checked;
-
-  if (!includeSuggestion && !includeNomination) {
-    showError('Pick at least one: a suggestion, a nomination, or both.');
-    return;
-  }
-
-  let nominees = null;
-  if (includeNomination) {
-    const rows = document.querySelectorAll('#nominees-list .nominee-row');
-    nominees = Array.from(rows).map(row => ({
-      name: row.querySelector('.nominee-name').value.trim(),
-      role: row.querySelector('.nominee-role').value.trim() || null,
-    })).filter(n => n.name);
-
-    if (nominees.length === 0) {
-      showError('Add at least one nominee, or uncheck the nomination option.');
-      return;
+  if (hasNomination) {
+    const chips = submission.nominees.map(n => `<span class="nominee-chip">${escapeHtml(n.name)}${n.role ? ' · ' + escapeHtml(n.role) : ''}</span>`).join('');
+    body += `<div class="field-label">Nominees</div><div style="margin-bottom:14px;">${chips}</div>`;
+    if (submission.nomination_reason) {
+      body += `<div class="field-label">Reason</div><div style="margin-bottom:20px; white-space:pre-wrap;">${escapeHtml(submission.nomination_reason)}</div>`;
     }
   }
 
-  const payload = {
-    suggestion_text: includeSuggestion ? document.getElementById('suggestion_text').value.trim() : null,
-    nomination_reason: includeNomination ? document.getElementById('nomination_reason').value.trim() : null,
-    nominees: nominees,
-  };
-
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-
-  let res;
-  try {
-    res = await fetch(`/api/edit/${token}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    showError('Network error — please try again.');
-    return;
-  }
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    showError(data.detail || 'Something went wrong.');
-    return;
-  }
-
   card.innerHTML = `
-    <div class="confirmation">
-      <div class="stamp-mark">✓</div>
-      <h1>Saved</h1>
-      <p class="subtitle">Your changes have been updated.</p>
-    </div>
-  `;
-}
+    <div class="stamp">${statusLabels[submission.status] || submission.status}</div>
+    <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : (hasNomination ? 'Employee recognition' : 'Idea box')}</p>
+    <h1>Your submission</h1>
+    <p class="subtitle">${who} · ${when}</p>
 
-function showError(msg) {
-  const errorEl = document.getElementById('error-msg');
-  const btn = document.getElementById('save-btn');
-  errorEl.textContent = msg;
-  errorEl.classList.add('visible');
-  btn.disabled = false;
-  btn.textContent = 'Save changes';
+    ${body}
+
+    <p class="hint" style="display:block; margin-top:8px;">This is a read-only view — submissions can't be edited after they're sent. This link expires 24hrs after submitting.</p>
+  `;
 }
 
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
-}
-
-function escapeAttr(str) {
-  return escapeHtml(str).replace(/"/g, '&quot;');
 }
 
 loadSubmission();

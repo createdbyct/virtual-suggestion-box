@@ -43,13 +43,17 @@ function renderForm(form) {
   const showNomination = form.type === 'nomination' || form.type === 'both';
   const isBoth = form.type === 'both';
   const stampEmoji = stampIcon(form.type);
+  const genericSubtitle = isBoth
+    ? 'Leave a suggestion, nominate a coworker, or both.'
+    : (form.type === 'nomination' ? "Recognize a coworker (or a few) who's earned it." : 'Tell us what would make things better.');
+  const subtitleText = form.description || genericSubtitle;
 
   card.innerHTML = `
     <div class="stamp stamp-icon" style="${isBoth ? 'font-size:1.3rem;' : ''}">${stampEmoji}</div>
     <button type="button" class="share-icon-btn" id="share-form-btn" aria-label="Share this form" title="Share this form">🔗</button>
     <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : (form.type === 'nomination' ? 'Employee recognition' : 'Idea box')}</p>
     <h1>${escapeHtml(form.title)}</h1>
-    <p class="subtitle">${isBoth ? 'Leave a suggestion, nominate a coworker, or both.' : (form.type === 'nomination' ? "Recognize a coworker (or a few) who's earned it." : 'Tell us what would make things better.')}</p>
+    <p class="subtitle">${escapeHtml(subtitleText)}</p>
 
     <form id="submit-form">
       ${isBoth ? `
