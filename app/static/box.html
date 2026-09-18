@@ -49,7 +49,7 @@ function renderForm(form) {
   const subtitleText = form.description || genericSubtitle;
 
   card.innerHTML = `
-    <div class="stamp stamp-icon" style="${isBoth ? 'font-size:1.3rem;' : ''}">${stampEmoji}</div>
+    <div class="stamp stamp-icon">${stampEmoji}</div>
     <button type="button" class="share-icon-btn" id="share-form-btn" aria-label="Share this form" title="Share this form">🔗</button>
     <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : (form.type === 'nomination' ? 'Employee recognition' : 'Idea box')}</p>
     <h1>${escapeHtml(form.title)}</h1>
@@ -90,7 +90,7 @@ function renderForm(form) {
         <label for="submitter_name">Your name <span class="hint">(optional)</span></label>
         <input type="text" id="submitter_name">
 
-        <label for="submitter_email">Your email <span class="hint">(optional — lets you edit within 24hrs)</span></label>
+        <label for="submitter_email">Your email <span class="hint">(optional — lets you view your submission within 24hrs)</span></label>
         <input type="email" id="submitter_email">
       </div>
       <button type="button" class="link-btn" id="show-identity-btn" style="margin-top:14px;">+ Add your name and email</button>
@@ -242,10 +242,10 @@ function renderConfirmation(data) {
       <h1>Thanks — got it.</h1>
       <p class="subtitle">Your submission has been received.</p>
       <div class="edit-link-box">
-        <div class="label">Save this link to make changes</div>
+        <div class="label">Save this link to view your submission</div>
         <div class="edit-link-url" id="edit-url-text">${editUrl}</div>
         <button class="copy-btn" id="copy-btn">Copy link</button>
-        <p class="timestamp">Editable until ${expires.toLocaleString()}</p>
+        <p class="timestamp">Available until ${expires.toLocaleString()}</p>
       </div>
     </div>
   `;
@@ -260,7 +260,7 @@ function renderConfirmation(data) {
 function stampIcon(type) {
   if (type === 'suggestion') return '💡';
   if (type === 'nomination') return '🏆';
-  return '💡🏆';
+  return '📋';
 }
 
 function showToast(message) {

@@ -848,6 +848,7 @@ async function renderEditPage(projectId, editTab) {
     <a class="back-link" id="back-link">&larr; Back to your forms</a>
     <h1>${escapeHtml(project.title)} ${typeBadges(project.type)}</h1>
     <p class="subtitle" style="font-family:'IBM Plex Mono',monospace; font-size:0.82rem;">${url}</p>
+    <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer" style="margin-bottom:4px;">Open</a>
     <button class="link-btn copy-link-btn" data-url="${url}" style="margin-bottom:4px;">Copy link</button>
     <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(project.title)}" style="margin-bottom:14px;">QR Code to share</button>
 

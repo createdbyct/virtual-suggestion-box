@@ -44,7 +44,6 @@ function renderSubmission(submission) {
   const hasSuggestion = !!submission.suggestion_text;
   const hasNomination = Array.isArray(submission.nominees) && submission.nominees.length > 0;
   const isBoth = hasSuggestion && hasNomination;
-  const statusLabels = { new: 'New', reviewed: 'Reviewed', done: 'Done' };
   const when = new Date(submission.created_at).toLocaleString();
   const who = submission.is_anonymous
     ? 'Submitted anonymously'
@@ -63,14 +62,12 @@ function renderSubmission(submission) {
   }
 
   card.innerHTML = `
-    <div class="stamp">${statusLabels[submission.status] || submission.status}</div>
+    <div class="stamp stamp-icon">👁️</div>
     <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : (hasNomination ? 'Employee recognition' : 'Idea box')}</p>
     <h1>Your submission</h1>
     <p class="subtitle">${who} · ${when}</p>
 
     ${body}
-
-    <p class="hint" style="display:block; margin-top:8px;">This is a read-only view — submissions can't be edited after they're sent. This link expires 24hrs after submitting.</p>
   `;
 }
 

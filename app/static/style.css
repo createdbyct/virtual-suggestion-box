@@ -177,7 +177,7 @@ body {
   border-radius: var(--radius);
   max-width: 620px;
   width: 100%;
-  padding: 40px 36px 32px;
+  padding: 72px 36px 32px;
   height: fit-content;
   box-shadow: 0 1px 2px rgba(30,30,28,0.04), 0 12px 32px -16px rgba(30,30,28,0.18);
 }
@@ -196,7 +196,7 @@ body {
 .stamp {
   position: absolute;
   top: -14px;
-  right: 24px;
+  right: 8px;
   width: 78px;
   height: 78px;
   border-radius: 50%;
@@ -816,6 +816,7 @@ body[data-page="home"] {
 
 .card-wide {
   max-width: 880px;
+  padding-top: 40px; /* no stamp on this page, so it doesn't need the extra clearance the base .card padding-top now has */
 }
 
 .top-bar {
