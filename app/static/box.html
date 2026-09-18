@@ -242,19 +242,11 @@ function renderConfirmation(data) {
       <h1>Thanks — got it.</h1>
       <p class="subtitle">Your submission has been received.</p>
       <div class="edit-link-box">
-        <div class="label">Save this link to view your submission</div>
-        <div class="edit-link-url" id="edit-url-text">${editUrl}</div>
-        <button class="copy-btn" id="copy-btn">Copy link</button>
-        <p class="timestamp">Available until ${expires.toLocaleString()}</p>
+        <a href="${editUrl}" class="link-btn" style="width:100%; justify-content:center;">View your submission</a>
+        <p class="timestamp" style="margin-top:10px;">Available until ${expires.toLocaleString()}</p>
       </div>
     </div>
   `;
-  document.getElementById('copy-btn').addEventListener('click', () => {
-    navigator.clipboard.writeText(editUrl);
-    const btn = document.getElementById('copy-btn');
-    btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = 'Copy link'; }, 1500);
-  });
 }
 
 function stampIcon(type) {
