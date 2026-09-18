@@ -42,15 +42,14 @@ function renderForm(form) {
   const showSuggestion = form.type === 'suggestion' || form.type === 'both';
   const showNomination = form.type === 'nomination' || form.type === 'both';
   const isBoth = form.type === 'both';
-  const stampLabel = stampText(form.title);
+  const stampEmoji = stampIcon(form.type);
 
   card.innerHTML = `
-    <div class="stamp">${stampLabel}</div>
+    <div class="stamp stamp-icon" style="${isBoth ? 'font-size:1.3rem;' : ''}">${stampEmoji}</div>
+    <button type="button" class="share-icon-btn" id="share-form-btn" aria-label="Share this form" title="Share this form">🔗</button>
     <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : (form.type === 'nomination' ? 'Employee recognition' : 'Idea box')}</p>
     <h1>${escapeHtml(form.title)}</h1>
     <p class="subtitle">${isBoth ? 'Leave a suggestion, nominate a coworker, or both.' : (form.type === 'nomination' ? "Recognize a coworker (or a few) who's earned it." : 'Tell us what would make things better.')}</p>
-
-    <button type="button" class="link-btn" id="share-form-btn" style="width:100%; justify-content:center; margin-bottom:20px;">🔗 Share or scan this form</button>
 
     <form id="submit-form">
       ${isBoth ? `
@@ -254,10 +253,10 @@ function renderConfirmation(data) {
   });
 }
 
-function stampText(text, maxLen = 20) {
-  const upper = text.toUpperCase();
-  const truncated = upper.length > maxLen ? upper.slice(0, maxLen - 1).trimEnd() + '…' : upper;
-  return escapeHtml(truncated);
+function stampIcon(type) {
+  if (type === 'suggestion') return '💡';
+  if (type === 'nomination') return '🏆';
+  return '💡🏆';
 }
 
 function showToast(message) {

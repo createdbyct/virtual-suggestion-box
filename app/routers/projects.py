@@ -6,7 +6,8 @@ transferring ownership.
 """
 import csv
 import io
-import re
+import secrets
+import string
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -26,22 +27,19 @@ from ..webhook import send_webhook_notification, build_new_form_message
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
+SHORT_CODE_CHARS = string.ascii_lowercase + string.digits
 
-def _slugify(title: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
-    slug = slug or "form"
 
-    max_len = 40
-    if len(slug) > max_len:
-        truncated = slug[:max_len]
-        # Cut at the last word boundary within the limit rather than
-        # mid-word, as long as that doesn't make it too short to be
-        # meaningful — falls back to a hard cut otherwise.
-        last_dash = truncated.rfind("-")
-        if last_dash > 15:
-            truncated = truncated[:last_dash]
-        slug = truncated.strip("-") or "form"
-    return slug
+def _generate_short_code(db: Session, length: int = 5) -> str:
+    """Short, random link code — like a URL shortener, not based on the
+    title at all. 36^5 ≈ 60M possible codes, so collisions are
+    negligible for any realistic number of forms; retries a few times
+    just in case, then fails loudly rather than looping forever."""
+    for _ in range(20):
+        code = "".join(secrets.choice(SHORT_CODE_CHARS) for _ in range(length))
+        if not db.query(Project).filter(Project.slug == code).first():
+            return code
+    raise HTTPException(status_code=500, detail="Could not generate a unique link — please try again")
 
 
 def _unique_slug(base_slug: str, db: Session) -> str:
@@ -118,11 +116,12 @@ def _get_accessible_project_or_404(project_id: int, user: User, db: Session) -> 
 def create_project(payload: ProjectCreate, background_tasks: BackgroundTasks, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if payload.slug:
         # Explicit custom link — auto-increment if it's taken (link-2,
-        # link-3, ...) rather than erroring, same as the title-based
-        # auto-generated case just below.
+        # link-3, ...) rather than erroring.
         slug = _unique_slug(payload.slug, db)
     else:
-        slug = _unique_slug(_slugify(payload.title), db)
+        # No custom link given — short random code, like a URL
+        # shortener, rather than a long title-derived one.
+        slug = _generate_short_code(db)
 
     project = Project(
         owner_id=user.id,

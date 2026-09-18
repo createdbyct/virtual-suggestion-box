@@ -216,6 +216,14 @@ body {
   padding: 4px;
 }
 
+.stamp.stamp-icon {
+  font-size: 1.8rem;
+  font-family: inherit;
+  letter-spacing: normal;
+  line-height: 1;
+  padding: 0;
+}
+
 .stamp::after {
   content: "";
   position: absolute;
@@ -267,14 +275,14 @@ h1 {
   font-weight: 600;
   font-size: 1.7rem;
   line-height: 1.2;
-  margin: 0 0 4px;
+  margin: 0 0 8px;
   letter-spacing: -0.01em;
 }
 
 .subtitle {
   color: var(--muted);
   font-size: 0.92rem;
-  margin: 0 0 28px;
+  margin: 0 0 20px;
 }
 
 label {
@@ -886,10 +894,8 @@ select {
 
 .project-row-top {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .project-row-title {
@@ -1072,10 +1078,8 @@ select {
   padding: 14px 16px;
   background: var(--card);
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .user-row-info { font-size: 0.9rem; }
