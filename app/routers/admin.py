@@ -49,33 +49,50 @@ def list_all_projects(admin: User = Depends(require_admin), db: Session = Depend
         .order_by(Project.created_at.desc())
         .all()
     )
-    watched_ids = {w.project_id for w in db.query(WatchedForm).all()}
+    watched_by_id = {w.project_id: w for w in db.query(WatchedForm).all()}
     result = []
     for project, owner_email, owner_name, count, new_count in rows:
         project.submission_count = count
         project.new_submission_count = new_count or 0
         project.owner_email = owner_email
         project.owner_name = owner_name
-        project.is_watched = project.id in watched_ids
+        watched = watched_by_id.get(project.id)
+        project.notify_email = watched.notify_email if watched else False
+        project.notify_webhook = watched.notify_webhook if watched else False
         result.append(project)
     return result
 
 
 @router.post("/projects/{project_id}/watch")
-def toggle_watch_form(project_id: int, watched: bool = Body(embed=True), superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
-    """Superadmin-only — adds/removes a form from the global notification
-    watch list, independent of who owns the form."""
+def toggle_watch_form(
+    project_id: int,
+    notify_email: bool = Body(embed=True),
+    notify_webhook: bool = Body(embed=True),
+    superadmin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Superadmin-only, per-channel — a form can notify via email only,
+    webhook only, both, or neither. If both end up off, the row is
+    removed entirely rather than kept as a no-op."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Form not found")
 
     existing = db.query(WatchedForm).filter(WatchedForm.project_id == project_id).first()
-    if watched and not existing:
-        db.add(WatchedForm(project_id=project_id))
-    elif not watched and existing:
-        db.delete(existing)
+
+    if not notify_email and not notify_webhook:
+        if existing:
+            db.delete(existing)
+            db.commit()
+        return {"status": "ok", "notify_email": False, "notify_webhook": False}
+
+    if existing:
+        existing.notify_email = notify_email
+        existing.notify_webhook = notify_webhook
+    else:
+        db.add(WatchedForm(project_id=project_id, notify_email=notify_email, notify_webhook=notify_webhook))
     db.commit()
-    return {"status": "ok", "watched": watched}
+    return {"status": "ok", "notify_email": notify_email, "notify_webhook": notify_webhook}
 
 
 @router.get("/settings", response_model=SiteSettingsAdminOut)

@@ -205,9 +205,15 @@ class SiteSettings(Base):
 
 class WatchedForm(Base):
     """A form the superadmin wants global notifications for. Independent
-    of who owns the form — superadmin sees and can watch any form."""
+    of who owns the form — superadmin sees and can watch any form.
+    Per-channel, not all-or-nothing: a form can be watched via email
+    only, webhook only, or both — whichever the superadmin picks. If
+    both end up off, the row is deleted entirely rather than kept
+    around as a no-op (see toggle_watch_form in routers/admin.py)."""
     __tablename__ = "watched_forms"
 
     id = Column(Integer, primary_key=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, unique=True)
+    notify_email = Column(Boolean, nullable=False, default=True)
+    notify_webhook = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -1621,28 +1621,45 @@ function renderWatchList(forms) {
   list.innerHTML = forms.map(p => `
     <div class="project-row">
       <div class="project-row-top">
-        <div class="checkbox-row" style="margin:0;">
-          <input type="checkbox" class="watch-checkbox" data-id="${p.id}" ${p.is_watched ? 'checked' : ''}>
-          <label style="margin:0; font-weight:600;">${escapeHtml(p.title)}</label>
+        <div>
+          <div style="font-weight:600;">${escapeHtml(p.title)}</div>
+          <span class="hint">${escapeHtml(p.owner_email)}</span>
         </div>
-        <span class="hint">${escapeHtml(p.owner_email)}</span>
+        <div style="display:flex; gap:16px;">
+          <div class="checkbox-row" style="margin:0;">
+            <input type="checkbox" class="watch-checkbox" data-id="${p.id}" data-channel="email" ${p.notify_email ? 'checked' : ''}>
+            <label style="margin:0;">Email</label>
+          </div>
+          <div class="checkbox-row" style="margin:0;">
+            <input type="checkbox" class="watch-checkbox" data-id="${p.id}" data-channel="webhook" ${p.notify_webhook ? 'checked' : ''}>
+            <label style="margin:0;">Webhook</label>
+          </div>
+        </div>
       </div>
     </div>
   `).join('');
 
   list.querySelectorAll('.watch-checkbox').forEach(cb => {
     cb.addEventListener('change', async () => {
-      const res = await fetch(`/api/admin/projects/${cb.dataset.id}/watch`, {
+      const formId = cb.dataset.id;
+      // Read the CURRENT state of both checkboxes for this form — the
+      // endpoint takes both flags together, not one at a time, so a
+      // change to either one needs to send the other's current value too.
+      const emailCb = list.querySelector(`.watch-checkbox[data-id="${formId}"][data-channel="email"]`);
+      const webhookCb = list.querySelector(`.watch-checkbox[data-id="${formId}"][data-channel="webhook"]`);
+
+      const res = await fetch(`/api/admin/projects/${formId}/watch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ watched: cb.checked }),
+        body: JSON.stringify({ notify_email: emailCb.checked, notify_webhook: webhookCb.checked }),
       });
       if (!res.ok) {
         cb.checked = !cb.checked;
         alert('Could not update — please try again.');
         return;
       }
-      showToast(cb.checked ? 'Now notifying for this form' : 'Notifications off for this form');
+      const label = cb.dataset.channel === 'email' ? 'Email' : 'Webhook';
+      showToast(`${label} ${cb.checked ? 'on' : 'off'} for this form`);
     });
   });
 }

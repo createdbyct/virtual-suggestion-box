@@ -94,12 +94,12 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
     # Best-effort notifications — fired as background tasks so a slow or
     # failing send never adds latency to the submitter's response, and
     # never breaks the submission itself either way.
-    # Superadmin-only and global: whichever forms are on the watch list,
-    # regardless of who owns them — no per-form notification config.
-    is_watched = db.query(WatchedForm).filter(WatchedForm.project_id == project.id).first() is not None
+    # Superadmin-only and global, per-channel: a form can be watched via
+    # email only, webhook only, both, or neither.
+    watched = db.query(WatchedForm).filter(WatchedForm.project_id == project.id).first()
     site_settings = db.query(SiteSettings).filter(SiteSettings.id == 1).first()
-    global_webhook_url = site_settings.notification_webhook_url if (site_settings and is_watched) else None
-    global_notify_email = site_settings.notification_email if (site_settings and is_watched) else None
+    global_webhook_url = site_settings.notification_webhook_url if (site_settings and watched and watched.notify_webhook) else None
+    global_notify_email = site_settings.notification_email if (site_settings and watched and watched.notify_email) else None
 
     if global_webhook_url or global_notify_email:
         nominee_names = [n.name for n in payload.nominees] if has_nomination else []

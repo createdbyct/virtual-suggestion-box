@@ -434,4 +434,5 @@ class ProjectUpdate(BaseModel):
 class ProjectAdminOut(ProjectOut):
     owner_id: int
     owner_email: str
-    is_watched: bool = False
+    notify_email: bool = False
+    notify_webhook: bool = False
