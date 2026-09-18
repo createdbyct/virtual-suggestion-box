@@ -42,15 +42,6 @@ def _generate_short_code(db: Session, length: int = 5) -> str:
     raise HTTPException(status_code=500, detail="Could not generate a unique link — please try again")
 
 
-def _unique_slug(base_slug: str, db: Session) -> str:
-    slug = base_slug
-    n = 2
-    while db.query(Project).filter(Project.slug == slug).first():
-        slug = f"{base_slug}-{n}"
-        n += 1
-    return slug
-
-
 def build_submissions_csv(project: Project, submissions: list[Submission]) -> StreamingResponse:
     """Shared by the owner/viewer export here and the admin export in
     admin.py, so the column layout can't drift between the two."""
@@ -114,14 +105,9 @@ def _get_accessible_project_or_404(project_id: int, user: User, db: Session) -> 
 
 @router.post("", response_model=ProjectOut)
 def create_project(payload: ProjectCreate, background_tasks: BackgroundTasks, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if payload.slug:
-        # Explicit custom link — auto-increment if it's taken (link-2,
-        # link-3, ...) rather than erroring.
-        slug = _unique_slug(payload.slug, db)
-    else:
-        # No custom link given — short random code, like a URL
-        # shortener, rather than a long title-derived one.
-        slug = _generate_short_code(db)
+    # Always a short random code, like a URL shortener — no custom/vanity
+    # link option, so there's no path to an arbitrarily long URL at all.
+    slug = _generate_short_code(db)
 
     project = Project(
         owner_id=user.id,
@@ -290,9 +276,6 @@ def delete_submission(
 @router.patch("/{project_id}", response_model=ProjectOut)
 def update_project(project_id: int, payload: ProjectUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     project = _get_owned_project_or_404(project_id, user, db)
-
-    if payload.slug is not None and payload.slug != project.slug:
-        project.slug = _unique_slug(payload.slug, db)
 
     if payload.title is not None:
         project.title = payload.title

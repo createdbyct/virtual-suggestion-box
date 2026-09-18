@@ -562,20 +562,12 @@ function showNewFormModal() {
         <label for="title">Title</label>
         <input type="text" id="title" placeholder="e.g. Employee of the Month" required>
 
-        <div class="form-row">
-          <div>
-            <label for="type">Type</label>
-            <select id="type">
-              <option value="both">Suggestions + Nominations</option>
-              <option value="suggestion">Suggestions only</option>
-              <option value="nomination">Nominations only</option>
-            </select>
-          </div>
-          <div>
-            <label for="slug">Custom link <span class="hint">(optional)</span></label>
-            <input type="text" id="slug" placeholder="auto-generated">
-          </div>
-        </div>
+        <label for="type">Type</label>
+        <select id="type">
+          <option value="both">Suggestions + Nominations</option>
+          <option value="suggestion">Suggestions only</option>
+          <option value="nomination">Nominations only</option>
+        </select>
 
         <p class="hint" style="margin-top:10px; display:block;">Every form always accepts anonymous submissions — people can optionally leave their name.</p>
 
@@ -654,7 +646,6 @@ async function handleCreate(e) {
   const payload = {
     title: document.getElementById('title').value.trim(),
     type: document.getElementById('type').value,
-    slug: document.getElementById('slug').value.trim() || null,
   };
 
   btn.disabled = true;
@@ -802,20 +793,12 @@ async function renderEditPage(projectId, editTab) {
       <label for="edit-title">Title</label>
       <input type="text" id="edit-title" value="${escapeAttr(project.title)}" required>
 
-      <div class="form-row">
-        <div>
-          <label for="edit-type">Type</label>
-          <select id="edit-type">
-            <option value="both" ${project.type === 'both' ? 'selected' : ''}>Suggestions + Nominations</option>
-            <option value="suggestion" ${project.type === 'suggestion' ? 'selected' : ''}>Suggestions only</option>
-            <option value="nomination" ${project.type === 'nomination' ? 'selected' : ''}>Nominations only</option>
-          </select>
-        </div>
-        <div>
-          <label for="edit-slug">Link</label>
-          <input type="text" id="edit-slug" value="${escapeAttr(project.slug)}">
-        </div>
-      </div>
+      <label for="edit-type">Type</label>
+      <select id="edit-type">
+        <option value="both" ${project.type === 'both' ? 'selected' : ''}>Suggestions + Nominations</option>
+        <option value="suggestion" ${project.type === 'suggestion' ? 'selected' : ''}>Suggestions only</option>
+        <option value="nomination" ${project.type === 'nomination' ? 'selected' : ''}>Nominations only</option>
+      </select>
 
       <p class="error-msg" id="edit-error"></p>
       <button type="submit" id="edit-save-btn">Save changes</button>
@@ -1023,7 +1006,6 @@ async function handleEditSave(e, projectId) {
   const payload = {
     title: document.getElementById('edit-title').value.trim(),
     type: document.getElementById('edit-type').value,
-    slug: document.getElementById('edit-slug').value.trim(),
   };
 
   btn.disabled = true;

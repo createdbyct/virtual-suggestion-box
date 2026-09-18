@@ -353,7 +353,8 @@ class RecoveryCodesOut(BaseModel):
 class ProjectCreate(BaseModel):
     title: str
     type: str  # 'suggestion' | 'nomination' | 'both'
-    slug: Optional[str] = None  # auto-generated from title if omitted
+    # No custom/vanity link option — every form gets a short random code
+    # (see _generate_short_code in routers/projects.py).
 
     @field_validator("title")
     @classmethod
@@ -368,19 +369,6 @@ class ProjectCreate(BaseModel):
     def type_valid(cls, v: str) -> str:
         if v not in ("suggestion", "nomination", "both"):
             raise ValueError("type must be 'suggestion', 'nomination', or 'both'")
-        return v
-
-    @field_validator("slug")
-    @classmethod
-    def slug_format(cls, v):
-        if v is None:
-            return v
-        v = v.strip().lower()
-        if not v:
-            return None
-        import re
-        if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", v):
-            raise ValueError("slug can only contain lowercase letters, numbers, and hyphens")
         return v
 
 
@@ -418,7 +406,6 @@ class ProjectUpdate(BaseModel):
     """All fields optional — PATCH semantics, only provided fields change."""
     title: Optional[str] = None
     type: Optional[str] = None
-    slug: Optional[str] = None
 
     @field_validator("title")
     @classmethod
@@ -435,19 +422,6 @@ class ProjectUpdate(BaseModel):
     def type_valid(cls, v):
         if v is not None and v not in ("suggestion", "nomination", "both"):
             raise ValueError("type must be 'suggestion', 'nomination', or 'both'")
-        return v
-
-    @field_validator("slug")
-    @classmethod
-    def slug_format(cls, v):
-        if v is None:
-            return v
-        v = v.strip().lower()
-        if not v:
-            raise ValueError("slug cannot be blank")
-        import re
-        if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", v):
-            raise ValueError("slug can only contain lowercase letters, numbers, and hyphens")
         return v
 
 
