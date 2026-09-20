@@ -1,10 +1,11 @@
 """
 Pydantic schemas — request/response shapes, separate from the DB models.
 """
+import json
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 
 
 class NomineeIn(BaseModel):
@@ -28,6 +29,147 @@ class NomineeOut(BaseModel):
         from_attributes = True
 
 
+QUESTION_TYPES = ("multiple_choice", "rating", "short_text", "yes_no")
+
+
+class SurveyQuestionCreate(BaseModel):
+    question_text: str
+    question_type: str  # 'multiple_choice' | 'rating' | 'short_text' | 'yes_no'
+    options: Optional[List[str]] = None  # required, 2+ entries, only for multiple_choice
+    required: bool = False
+
+    @field_validator("question_text")
+    @classmethod
+    def text_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("question text cannot be blank")
+        return v
+
+    @field_validator("question_type")
+    @classmethod
+    def type_valid(cls, v: str) -> str:
+        if v not in QUESTION_TYPES:
+            raise ValueError(f"question_type must be one of {QUESTION_TYPES}")
+        return v
+
+    @field_validator("options")
+    @classmethod
+    def clean_options(cls, v):
+        if v is None:
+            return None
+        cleaned = [o.strip() for o in v if o and o.strip()]
+        return cleaned or None
+
+    @model_validator(mode="after")
+    def options_required_for_multiple_choice(self):
+        if self.question_type == "multiple_choice" and (not self.options or len(self.options) < 2):
+            raise ValueError("multiple choice questions need at least 2 options")
+        return self
+
+
+class SurveyQuestionUpdate(BaseModel):
+    """All fields optional — PATCH semantics. No cross-field options/type
+    check here (unlike Create) since a partial update might touch only
+    one field; the router keeps whichever value isn't being changed."""
+    question_text: Optional[str] = None
+    question_type: Optional[str] = None
+    options: Optional[List[str]] = None
+    required: Optional[bool] = None
+
+    @field_validator("question_text")
+    @classmethod
+    def text_not_blank(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("question text cannot be blank")
+        return v
+
+    @field_validator("question_type")
+    @classmethod
+    def type_valid(cls, v):
+        if v is not None and v not in QUESTION_TYPES:
+            raise ValueError(f"question_type must be one of {QUESTION_TYPES}")
+        return v
+
+    @field_validator("options")
+    @classmethod
+    def clean_options(cls, v):
+        if v is None:
+            return None
+        cleaned = [o.strip() for o in v if o and o.strip()]
+        return cleaned or None
+
+
+class SurveyQuestionReorder(BaseModel):
+    question_ids: List[int]  # full ordered list of every question's id for this form
+
+
+class SurveyQuestionOut(BaseModel):
+    id: int
+    question_text: str
+    question_type: str
+    options: Optional[List[str]] = None
+    required: bool
+    display_order: int
+
+    class Config:
+        from_attributes = True
+
+    @field_validator("options", mode="before")
+    @classmethod
+    def parse_options(cls, v):
+        if v is None or isinstance(v, list):
+            return v
+        try:
+            return json.loads(v)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+
+class SurveyAnswerIn(BaseModel):
+    """Only include an entry for a question the submitter actually
+    answered — omit the question_id entirely to skip it, rather than
+    submitting a blank answer_text."""
+    question_id: int
+    answer_text: str
+
+    @field_validator("answer_text")
+    @classmethod
+    def answer_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("answer cannot be blank — omit this question instead of sending an empty answer")
+        return v
+
+
+class SurveyAnswerOut(BaseModel):
+    question_id: int
+    question_text: str
+    question_type: str
+    answer_text: str
+
+    class Config:
+        from_attributes = True
+
+
+class QuestionAnalytics(BaseModel):
+    question_id: int
+    question_text: str
+    question_type: str
+    response_count: int
+    option_counts: Optional[dict] = None  # multiple_choice / yes_no — option text -> count
+    average_rating: Optional[float] = None  # rating questions only
+    text_answers: Optional[List[str]] = None  # short_text questions only — raw answers
+
+
+class SurveyAnalyticsOut(BaseModel):
+    total_submissions: int
+    questions: List[QuestionAnalytics]
+
+
 class SubmissionCreate(BaseModel):
     # A submitter fills in whichever of these apply to what they checked —
     # neither is individually required here; the router enforces "at least
@@ -40,6 +182,7 @@ class SubmissionCreate(BaseModel):
     nominees: Optional[List[NomineeIn]] = None
     submitter_name: Optional[str] = None
     submitter_email: Optional[EmailStr] = None
+    survey_answers: Optional[List[SurveyAnswerIn]] = None
 
     @field_validator("submitter_name")
     @classmethod
@@ -63,6 +206,7 @@ class SubmissionOut(BaseModel):
     suggestion_text: Optional[str]
     nomination_reason: Optional[str]
     nominees: List[NomineeOut] = []
+    survey_answers: List[SurveyAnswerOut] = []
     submitter_name: Optional[str]
     submitter_email: Optional[str]
     is_anonymous: bool
@@ -110,6 +254,7 @@ class ProjectPublicOut(BaseModel):
     title: str
     type: str  # 'suggestion' | 'nomination' | 'both'
     description: Optional[str] = None
+    survey_questions: List[SurveyQuestionOut] = []
 
     class Config:
         from_attributes = True
@@ -363,8 +508,8 @@ class ProjectCreate(BaseModel):
     @field_validator("type")
     @classmethod
     def type_valid(cls, v: str) -> str:
-        if v not in ("suggestion", "nomination", "both"):
-            raise ValueError("type must be 'suggestion', 'nomination', or 'both'")
+        if v not in ("suggestion", "nomination", "both", "survey"):
+            raise ValueError("type must be 'suggestion', 'nomination', 'both', or 'survey'")
         return v
 
 
@@ -426,8 +571,8 @@ class ProjectUpdate(BaseModel):
     @field_validator("type")
     @classmethod
     def type_valid(cls, v):
-        if v is not None and v not in ("suggestion", "nomination", "both"):
-            raise ValueError("type must be 'suggestion', 'nomination', or 'both'")
+        if v is not None and v not in ("suggestion", "nomination", "both", "survey"):
+            raise ValueError("type must be 'suggestion', 'nomination', 'both', or 'survey'")
         return v
 
 

@@ -61,11 +61,12 @@ class Project(Base):
 
     owner = relationship("User", back_populates="projects")
     submissions = relationship("Submission", back_populates="project", cascade="all, delete-orphan")
+    survey_questions = relationship("SurveyQuestion", back_populates="project", cascade="all, delete-orphan", order_by="SurveyQuestion.display_order")
     # People other than the owner who can view (not edit) this form's data.
     shares = relationship("ProjectShare", back_populates="project", cascade="all, delete-orphan")
 
     __table_args__ = (
-        CheckConstraint("type IN ('suggestion', 'nomination', 'both')", name="ck_project_type"),
+        CheckConstraint("type IN ('suggestion', 'nomination', 'both', 'survey')", name="ck_project_type"),
     )
 
 
@@ -96,6 +97,10 @@ class Submission(Base):
     # submission can name several people, each with their own role — e.g.
     # nominating both a cashier and a shift lead in the same nomination.
     nominees = relationship("Nominee", back_populates="submission", cascade="all, delete-orphan", order_by="Nominee.id")
+    # Optional survey answers, attached to this same submission — a form
+    # can have suggestion/nomination content AND survey answers together,
+    # since questions are an add-on to any form type, not a separate one.
+    survey_answers = relationship("SurveyAnswer", back_populates="submission", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint("status IN ('new', 'reviewed', 'done')", name="ck_submission_status"),
@@ -111,6 +116,60 @@ class Nominee(Base):
     role = Column(String, nullable=True)
 
     submission = relationship("Submission", back_populates="nominees")
+
+
+class SurveyQuestion(Base):
+    """A question attached to a form — add-on to any form type (suggestion,
+    nomination, or both), not a separate form kind. Deleting a question
+    cascades to delete its historical answers too, same permanence as
+    deleting a form or a submission elsewhere in this app."""
+    __tablename__ = "survey_questions"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    question_text = Column(String, nullable=False)
+    question_type = Column(String, nullable=False)  # 'multiple_choice' | 'rating' | 'short_text' | 'yes_no'
+    # JSON-encoded list of strings — only meaningful for multiple_choice.
+    options = Column(String, nullable=True)
+    required = Column(Boolean, nullable=False, default=False)
+    display_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    project = relationship("Project", back_populates="survey_questions")
+    answers = relationship("SurveyAnswer", back_populates="question", cascade="all, delete-orphan")
+
+
+class SurveyAnswer(Base):
+    """One answer to one question, attached to a submission — a single
+    submission can carry suggestion/nomination content and survey
+    answers together, since questions are an add-on, not their own
+    submission flow."""
+    __tablename__ = "survey_answers"
+
+    id = Column(Integer, primary_key=True)
+    submission_id = Column(Integer, ForeignKey("submissions.id"), nullable=False)
+    question_id = Column(Integer, ForeignKey("survey_questions.id"), nullable=False)
+    # The actual answer — selected option text, a rating as a string,
+    # free text, or "Yes"/"No". Kept as a single string column rather
+    # than type-specific columns, since only one question type ever
+    # applies per answer and this keeps analytics queries simple.
+    answer_text = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    submission = relationship("Submission", back_populates="survey_answers")
+    question = relationship("SurveyQuestion", back_populates="answers")
+
+    # Plain Python properties (not columns) so SubmissionOut's automatic
+    # ORM-to-schema conversion can read question_text/question_type
+    # directly off each answer, without every endpoint having to
+    # manually join and rebuild this list by hand.
+    @property
+    def question_text(self):
+        return self.question.question_text if self.question else None
+
+    @property
+    def question_type(self):
+        return self.question.question_type if self.question else None
 
 
 class ProjectShare(Base):

@@ -42,16 +42,19 @@ function renderForm(form) {
   const showSuggestion = form.type === 'suggestion' || form.type === 'both';
   const showNomination = form.type === 'nomination' || form.type === 'both';
   const isBoth = form.type === 'both';
+  const isSurveyOnly = form.type === 'survey';
   const stampEmoji = stampIcon(form.type);
   const genericSubtitle = isBoth
     ? 'Leave a suggestion, nominate a coworker, or both.'
+    : isSurveyOnly
+    ? 'Please answer the questions below.'
     : (form.type === 'nomination' ? "Recognize a coworker (or a few) who's earned it." : 'Tell us what would make things better.');
   const subtitleText = form.description || genericSubtitle;
 
   card.innerHTML = `
     <div class="stamp stamp-icon">${stampEmoji}</div>
     <button type="button" class="share-icon-btn" id="share-form-btn" aria-label="Share this form" title="Share this form">🔗</button>
-    <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : (form.type === 'nomination' ? 'Employee recognition' : 'Idea box')}</p>
+    <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : isSurveyOnly ? 'Survey' : (form.type === 'nomination' ? 'Employee recognition' : 'Idea box')}</p>
     <h1>${escapeHtml(form.title)}</h1>
     <p class="subtitle">${escapeHtml(subtitleText)}</p>
 
@@ -94,6 +97,11 @@ function renderForm(form) {
         <input type="email" id="submitter_email">
       </div>
       <button type="button" class="link-btn" id="show-identity-btn" style="margin-top:14px;">+ Add your name and email</button>
+
+      ${(form.survey_questions || []).length > 0 ? `
+        <p class="section-title" style="margin-top:24px;">A few questions</p>
+        ${form.survey_questions.map(q => renderQuestionField(q)).join('')}
+      ` : ''}
 
       <p class="error-msg" id="error-msg"></p>
       <button type="submit" id="submit-btn">Submit</button>
@@ -167,6 +175,28 @@ function collectNominees() {
   })).filter(n => n.name);
 }
 
+function collectSurveyAnswers() {
+  const answers = [];
+  const seen = new Set();
+
+  // Short text: one input per question.
+  document.querySelectorAll('.survey-answer-short-text').forEach(input => {
+    const value = input.value.trim();
+    if (value) answers.push({ question_id: parseInt(input.dataset.questionId), answer_text: value });
+  });
+
+  // Radio groups (multiple choice, rating, yes/no): only one checked
+  // input per question_id actually matters, so skip already-seen ids.
+  document.querySelectorAll('.survey-answer-radio:checked').forEach(input => {
+    const qid = parseInt(input.dataset.questionId);
+    if (seen.has(qid)) return;
+    seen.add(qid);
+    answers.push({ question_id: qid, answer_text: input.value });
+  });
+
+  return answers.length > 0 ? answers : null;
+}
+
 async function handleSubmit(e, isBoth) {
   e.preventDefault();
   const errorEl = document.getElementById('error-msg');
@@ -197,6 +227,7 @@ async function handleSubmit(e, isBoth) {
     nominees: nominees,
     submitter_name: document.getElementById('submitter_name').value.trim() || null,
     submitter_email: document.getElementById('submitter_email').value.trim() || null,
+    survey_answers: collectSurveyAnswers(),
   };
 
   btn.disabled = true;
@@ -247,9 +278,62 @@ function renderConfirmation(data) {
   `;
 }
 
+function renderQuestionField(q) {
+  const requiredMark = q.required ? ' <span style="color:var(--error);">*</span>' : '';
+  const requiredAttr = q.required ? 'required' : '';
+
+  if (q.question_type === 'short_text') {
+    return `
+      <label for="q-${q.id}">${escapeHtml(q.question_text)}${requiredMark}</label>
+      <input type="text" id="q-${q.id}" data-question-id="${q.id}" class="survey-answer-short-text" ${requiredAttr}>
+    `;
+  }
+  if (q.question_type === 'yes_no') {
+    return `
+      <label>${escapeHtml(q.question_text)}${requiredMark}</label>
+      <div class="section-toggle" style="margin-bottom:14px;">
+        <label class="toggle-option">
+          <input type="radio" name="q-${q.id}" value="Yes" data-question-id="${q.id}" class="survey-answer-radio" ${requiredAttr}>
+          <span>Yes</span>
+        </label>
+        <label class="toggle-option">
+          <input type="radio" name="q-${q.id}" value="No" data-question-id="${q.id}" class="survey-answer-radio" ${requiredAttr}>
+          <span>No</span>
+        </label>
+      </div>
+    `;
+  }
+  if (q.question_type === 'rating') {
+    const stars = [1, 2, 3, 4, 5].map(n => `
+      <label class="toggle-option" style="flex:1; justify-content:center; text-align:center;">
+        <input type="radio" name="q-${q.id}" value="${n}" data-question-id="${q.id}" class="survey-answer-radio" ${requiredAttr}>
+        <span>${n}</span>
+      </label>
+    `).join('');
+    return `
+      <label>${escapeHtml(q.question_text)}${requiredMark}</label>
+      <div class="section-toggle" style="margin-bottom:14px;">${stars}</div>
+    `;
+  }
+  if (q.question_type === 'multiple_choice') {
+    const opts = (q.options || []).map(o => `
+      <label class="toggle-option">
+        <input type="radio" name="q-${q.id}" value="${escapeAttr(o)}" data-question-id="${q.id}" class="survey-answer-radio" ${requiredAttr}>
+        <span>${escapeHtml(o)}</span>
+      </label>
+    `).join('');
+    return `
+      <label>${escapeHtml(q.question_text)}${requiredMark}</label>
+      <div class="section-toggle" style="flex-direction:column; align-items:stretch; margin-bottom:14px;">${opts}</div>
+    `;
+  }
+  return '';
+}
+
 function stampIcon(type) {
   if (type === 'suggestion') return '💡';
   if (type === 'nomination') return '🏆';
+  if (type === 'survey') return '📊';
   return '📋';
 }
 

@@ -3,6 +3,7 @@ Public-facing endpoints — no login required.
 Covers: viewing a form by its slug, submitting to it, and editing
 a submission within the 24hr window via its edit token.
 """
+import json
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..mailer import get_smtp_config, is_smtp_configured, send_email
-from ..models import Project, Submission, Nominee, WatchedForm, SiteSettings
+from ..models import Project, Submission, Nominee, WatchedForm, SiteSettings, SurveyAnswer
 from ..rate_limit import check_rate_limit, get_client_ip
 from ..schemas import (
     SubmissionCreate, SubmissionOut,
@@ -67,9 +68,41 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
         if not has_nomination:
             raise HTTPException(status_code=400, detail="At least one nominee is required for this form")
         has_suggestion = False
+    elif project.type == "survey":
+        # Pure survey — no suggestion/nomination UI renders at all, so
+        # ignore any stray data and rely entirely on the required-question
+        # checks just below instead.
+        has_suggestion = False
+        has_nomination = False
     else:  # 'both' — submitter chooses either or both
         if not has_suggestion and not has_nomination:
             raise HTTPException(status_code=400, detail="Add a suggestion, a nomination, or both")
+
+    # Survey questions are an add-on to any form type — validate whatever
+    # was submitted against this form's actual current question list.
+    questions_by_id = {q.id: q for q in project.survey_questions}
+    submitted_answers = {a.question_id: a.answer_text for a in (payload.survey_answers or [])}
+
+    for question in project.survey_questions:
+        if question.required and question.id not in submitted_answers:
+            raise HTTPException(status_code=400, detail=f"'{question.question_text}' is required")
+
+    for qid, answer_text in submitted_answers.items():
+        question = questions_by_id.get(qid)
+        if not question:
+            raise HTTPException(status_code=400, detail="One of the submitted answers doesn't belong to this form")
+        if question.question_type == "multiple_choice":
+            valid_options = json.loads(question.options) if question.options else []
+            if answer_text not in valid_options:
+                raise HTTPException(status_code=400, detail=f"'{answer_text}' isn't a valid option for '{question.question_text}'")
+        elif question.question_type == "yes_no":
+            if answer_text not in ("Yes", "No"):
+                raise HTTPException(status_code=400, detail=f"'{question.question_text}' must be answered Yes or No")
+        elif question.question_type == "rating":
+            try:
+                float(answer_text)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"'{question.question_text}' needs a numeric rating")
 
     expires_at = datetime.utcnow() + timedelta(hours=EDIT_WINDOW_HOURS)
 
@@ -85,6 +118,11 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
     if has_nomination:
         submission.nominees = [
             Nominee(name=n.name, role=n.role) for n in payload.nominees
+        ]
+    if submitted_answers:
+        submission.survey_answers = [
+            SurveyAnswer(question_id=qid, answer_text=answer_text)
+            for qid, answer_text in submitted_answers.items()
         ]
 
     db.add(submission)

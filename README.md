@@ -71,8 +71,16 @@ Each form (`Project`) has a `type`:
 - `'suggestion'` — submitters only see a suggestion field
 - `'nomination'` — submitters only see nominee fields (name + role, can add several)
 - `'both'` — submitters check "I have a suggestion" and/or "I want to nominate someone," and fill in whichever they pick
+- `'survey'` — submitters only see this form's questions; no suggestion/nomination fields at all
+
+Survey questions (see below) can be added to *any* of these four types — `'both'` plus questions gets you all three (suggestions, nominations, and survey) in one submission; `'survey'` gets you a form that's nothing but questions.
 
 Every form always accepts anonymous submissions. A submitter can optionally give their name (and email, which unlocks a 24hr link to view what they submitted — it's read-only, not an edit link); leaving it blank submits anonymously.
+
+## Survey questions (optional, on any form)
+An add-on to any form — not a separate form type — from Edit → **Questions**: multiple choice, rating (1–5), short text, or yes/no, each individually markable as required or optional, reorderable via the up/down arrows. Answered on the same submission alongside suggestions/nominations, not a separate response flow. Deleting a question deletes every historical answer to it too — same permanence as deleting a form or a submission elsewhere in this app.
+
+**Analytics** (View submissions → 📊 View analytics): response counts and percentage breakdowns for multiple-choice/yes-no questions, average score for rating questions, and the raw list of answers for short-text questions.
 
 ## Reviewing submissions
 Each submission has a status — `new`, `reviewed`, or `done` — that the owner or anyone the form is shared with can update inline while browsing. The submissions list supports text search (matches suggestion text, nomination reason, submitter name, and nominee names) and a status filter, both server-side and paginated (10 per page) so this stays usable once a form has hundreds of entries. Deleting an individual submission is owner-only, unlike status updates or viewing, which shared viewers can also do.

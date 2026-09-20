@@ -6,6 +6,7 @@ transferring ownership.
 """
 import csv
 import io
+import json
 import secrets
 import string
 from typing import Optional
@@ -18,10 +19,12 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user, find_user_by_identifier
 from ..database import get_db
 from ..mailer import get_smtp_config, is_smtp_configured, send_email
-from ..models import Project, ProjectShare, Submission, Nominee, User, WatchedForm, SiteSettings
+from ..models import Project, ProjectShare, Submission, Nominee, User, WatchedForm, SiteSettings, SurveyQuestion, SurveyAnswer
 from ..schemas import (
     ProjectCreate, ProjectOut, ProjectUpdate, SubmissionOut, SubmissionListOut,
     SubmissionStatusUpdate, SubmissionStatusCounts, ShareIn, ShareOut, TransferOwnershipIn,
+    SurveyQuestionCreate, SurveyQuestionUpdate, SurveyQuestionOut, SurveyQuestionReorder,
+    SurveyAnalyticsOut, QuestionAnalytics,
 )
 from ..webhook import send_webhook_notification, build_new_form_message
 
@@ -272,6 +275,127 @@ def delete_submission(
     db.delete(submission)
     db.commit()
     return {"status": "deleted"}
+
+
+# ---- Survey questions ----
+# An add-on to any form type, not a separate kind of form — a suggestion
+# or nomination form can carry questions alongside its normal content.
+# Managing questions (create/edit/delete/reorder) is owner-only, same
+# tier as editing the form itself; viewing them (and the analytics built
+# from answers) is available to shared viewers too, same as submissions.
+
+@router.get("/{project_id}/questions", response_model=list[SurveyQuestionOut])
+def list_questions(project_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    project = _get_accessible_project_or_404(project_id, user, db)
+    return project.survey_questions
+
+
+@router.post("/{project_id}/questions", response_model=SurveyQuestionOut)
+def create_question(project_id: int, payload: SurveyQuestionCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    project = _get_owned_project_or_404(project_id, user, db)
+    max_order = db.query(func.max(SurveyQuestion.display_order)).filter(SurveyQuestion.project_id == project.id).scalar()
+    question = SurveyQuestion(
+        project_id=project.id,
+        question_text=payload.question_text,
+        question_type=payload.question_type,
+        options=json.dumps(payload.options) if payload.options else None,
+        required=payload.required,
+        display_order=(max_order + 1) if max_order is not None else 0,
+    )
+    db.add(question)
+    db.commit()
+    db.refresh(question)
+    return question
+
+
+@router.patch("/{project_id}/questions/{question_id}", response_model=SurveyQuestionOut)
+def update_question(
+    project_id: int, question_id: int, payload: SurveyQuestionUpdate,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    project = _get_owned_project_or_404(project_id, user, db)
+    question = db.query(SurveyQuestion).filter(SurveyQuestion.id == question_id, SurveyQuestion.project_id == project.id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    if payload.question_text is not None:
+        question.question_text = payload.question_text
+    if payload.question_type is not None:
+        question.question_type = payload.question_type
+    if "options" in payload.model_fields_set:
+        question.options = json.dumps(payload.options) if payload.options else None
+    if payload.required is not None:
+        question.required = payload.required
+
+    # A multiple-choice question always needs its options — catches the
+    # case where type is switched TO multiple_choice without options ever
+    # being supplied, in either this request or a prior one.
+    if question.question_type == "multiple_choice":
+        current_options = json.loads(question.options) if question.options else []
+        if len(current_options) < 2:
+            raise HTTPException(status_code=400, detail="Multiple choice questions need at least 2 options")
+
+    db.commit()
+    db.refresh(question)
+    return question
+
+
+@router.delete("/{project_id}/questions/{question_id}")
+def delete_question(project_id: int, question_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    project = _get_owned_project_or_404(project_id, user, db)
+    question = db.query(SurveyQuestion).filter(SurveyQuestion.id == question_id, SurveyQuestion.project_id == project.id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    db.delete(question)  # cascades to delete every historical answer to this question too
+    db.commit()
+    return {"status": "deleted"}
+
+
+@router.post("/{project_id}/questions/reorder")
+def reorder_questions(project_id: int, payload: SurveyQuestionReorder, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    project = _get_owned_project_or_404(project_id, user, db)
+    questions = {q.id: q for q in project.survey_questions}
+
+    if set(payload.question_ids) != set(questions.keys()):
+        raise HTTPException(status_code=400, detail="question_ids must include exactly this form's current questions, each exactly once")
+
+    for order, qid in enumerate(payload.question_ids):
+        questions[qid].display_order = order
+    db.commit()
+    return {"status": "reordered"}
+
+
+@router.get("/{project_id}/analytics", response_model=SurveyAnalyticsOut)
+def get_survey_analytics(project_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    project = _get_accessible_project_or_404(project_id, user, db)
+    total_submissions = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id).scalar()
+
+    questions_out = []
+    for question in project.survey_questions:
+        answers = (
+            db.query(SurveyAnswer)
+            .filter(SurveyAnswer.question_id == question.id)
+            .all()
+        )
+        entry = QuestionAnalytics(
+            question_id=question.id,
+            question_text=question.question_text,
+            question_type=question.question_type,
+            response_count=len(answers),
+        )
+        if question.question_type in ("multiple_choice", "yes_no"):
+            counts = {}
+            for a in answers:
+                counts[a.answer_text] = counts.get(a.answer_text, 0) + 1
+            entry.option_counts = counts
+        elif question.question_type == "rating":
+            numeric = [float(a.answer_text) for a in answers if a.answer_text and a.answer_text.replace(".", "", 1).isdigit()]
+            entry.average_rating = (sum(numeric) / len(numeric)) if numeric else None
+        elif question.question_type == "short_text":
+            entry.text_answers = [a.answer_text for a in answers]
+        questions_out.append(entry)
+
+    return SurveyAnalyticsOut(total_submissions=total_submissions, questions=questions_out)
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)

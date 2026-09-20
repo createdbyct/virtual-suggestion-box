@@ -123,6 +123,7 @@ async function loadUsers() {
 function typeBadges(type) {
   if (type === 'suggestion') return `<span class="badge">Suggestions</span>`;
   if (type === 'nomination') return `<span class="badge">Nominations</span>`;
+  if (type === 'survey') return `<span class="badge">Survey</span>`;
   return `<span class="badge">Suggestions</span> <span class="badge">Nominations</span>`;
 }
 
@@ -567,6 +568,7 @@ function showNewFormModal() {
           <option value="both">Suggestions + Nominations</option>
           <option value="suggestion">Suggestions only</option>
           <option value="nomination">Nominations only</option>
+          <option value="survey">Survey only</option>
         </select>
 
         <label for="description">Description <span class="hint">(optional)</span></label>
@@ -689,6 +691,64 @@ async function handleCreate(e) {
 
 // ---- Form detail: one page for everything about a single form ----
 
+async function renderAnalyticsView(projectId) {
+  const project = myProjects.find(p => p.id === projectId);
+  card.innerHTML = `${renderTopBar()}<p class="subtitle">Loading…</p>`;
+
+  const res = await fetch(`/api/projects/${projectId}/analytics`);
+  const data = res.ok ? await res.json() : { total_submissions: 0, questions: [] };
+
+  const typeLabels = { multiple_choice: 'Multiple choice', rating: 'Rating', short_text: 'Short text', yes_no: 'Yes / No' };
+
+  const questionsHtml = data.questions.length === 0
+    ? `<div class="empty-state">This form has no questions yet — add some from Edit → Questions.</div>`
+    : data.questions.map(q => {
+        let body = '';
+        if (q.option_counts && Object.keys(q.option_counts).length > 0) {
+          const max = Math.max(...Object.values(q.option_counts));
+          body = Object.entries(q.option_counts).map(([option, count]) => {
+            const pct = q.response_count > 0 ? Math.round((count / q.response_count) * 100) : 0;
+            const barWidth = max > 0 ? Math.round((count / max) * 100) : 0;
+            return `
+              <div style="margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
+                  <span>${escapeHtml(option)}</span>
+                  <span class="hint">${count} (${pct}%)</span>
+                </div>
+                <div style="background:var(--accent-soft); border-radius:4px; height:10px; overflow:hidden;">
+                  <div style="background:var(--accent); height:100%; width:${barWidth}%;"></div>
+                </div>
+              </div>
+            `;
+          }).join('');
+        } else if (q.average_rating !== null && q.average_rating !== undefined) {
+          body = `<div style="font-size:1.4rem; font-weight:600;">${q.average_rating.toFixed(1)} <span class="hint" style="font-size:0.85rem; font-weight:400;">average, out of 5</span></div>`;
+        } else if (q.text_answers && q.text_answers.length > 0) {
+          body = q.text_answers.map(a => `<div class="submission-row" style="margin-bottom:8px; font-size:0.9rem;">${escapeHtml(a)}</div>`).join('');
+        } else {
+          body = `<p class="hint">No responses yet.</p>`;
+        }
+
+        return `
+          <div class="project-row" style="margin-bottom:14px;">
+            <div class="project-row-title" style="margin-bottom:10px;">${escapeHtml(q.question_text)} <span class="badge">${typeLabels[q.question_type]}</span> <span class="hint">${q.response_count} response${q.response_count === 1 ? '' : 's'}</span></div>
+            ${body}
+          </div>
+        `;
+      }).join('');
+
+  card.innerHTML = `
+    ${renderTopBar()}
+    <a class="back-link" id="back-link">&larr; Back to submissions</a>
+    <h1>${escapeHtml(project.title)} — Analytics</h1>
+    <p class="subtitle">${data.total_submissions} total submission${data.total_submissions === 1 ? '' : 's'}</p>
+    ${questionsHtml}
+  `;
+
+  document.getElementById('back-link').addEventListener('click', () => renderSubmissionsPage(projectId));
+  bindChrome();
+}
+
 async function renderSubmissionsPage(projectId) {
   const project = myProjects.find(p => p.id === projectId);
   card.innerHTML = `${renderTopBar()}<p class="subtitle">Loading…</p>`;
@@ -717,6 +777,7 @@ async function renderSubmissionsPage(projectId) {
     <div class="status-filter-pills" id="status-filter-pills"></div>
     <input type="text" id="submission-search" placeholder="Search submissions…" value="${escapeAttr(currentSubmissionSearch)}" style="margin-bottom:16px;">
     <button class="link-btn" id="export-btn" style="margin-bottom:16px;">Export CSV</button>
+    <button class="link-btn" id="analytics-btn" style="margin-bottom:16px;">📊 View analytics</button>
     <div class="bulk-actions-bar" id="bulk-actions-bar"></div>
     <div class="submission-list" id="submission-list"></div>
     <div id="pagination-controls" style="display:flex; justify-content:space-between; align-items:center; margin-top:14px;"></div>
@@ -726,6 +787,7 @@ async function renderSubmissionsPage(projectId) {
   document.getElementById('export-btn').addEventListener('click', () => {
     window.location.href = `/api/projects/${projectId}/export.csv`;
   });
+  document.getElementById('analytics-btn').addEventListener('click', () => renderAnalyticsView(projectId));
   bindChrome();
 
   let searchDebounce;
@@ -778,11 +840,14 @@ async function renderEditPage(projectId, editTab) {
 
   const sharesRes = await fetch(`/api/projects/${projectId}/shares`);
   const shares = sharesRes.ok ? await sharesRes.json() : [];
+  const questionsRes = await fetch(`/api/projects/${projectId}/questions`);
+  const questions = questionsRes.ok ? await questionsRes.json() : [];
 
   const url = `${window.location.origin}/vb/${project.slug}`;
 
   const editTabs = [
     { id: 'settings', label: 'Settings' },
+    { id: 'questions', label: 'Questions' },
     { id: 'sharing', label: 'Sharing' },
     { id: 'danger', label: 'Danger zone' },
   ];
@@ -802,6 +867,7 @@ async function renderEditPage(projectId, editTab) {
         <option value="both" ${project.type === 'both' ? 'selected' : ''}>Suggestions + Nominations</option>
         <option value="suggestion" ${project.type === 'suggestion' ? 'selected' : ''}>Suggestions only</option>
         <option value="nomination" ${project.type === 'nomination' ? 'selected' : ''}>Nominations only</option>
+        <option value="survey" ${project.type === 'survey' ? 'selected' : ''}>Survey only</option>
       </select>
 
       <label for="edit-description">Description <span class="hint">(optional)</span></label>
@@ -841,7 +907,17 @@ async function renderEditPage(projectId, editTab) {
     <button type="button" id="delete-btn" style="background: var(--error);">Delete this form</button>
   `;
 
-  const tabContent = editTab === 'sharing' ? sharingTabHtml : editTab === 'danger' ? dangerTabHtml : settingsTabHtml;
+  const questionsTabHtml = `
+    <p class="section-title" style="margin-top:0;">Questions</p>
+    <p class="hint" style="display:block; margin-bottom:14px;">Optional — add structured questions alongside suggestions/nominations. Answered on the same form, shown together with analytics on the submissions page.</p>
+    <button type="button" class="link-btn" id="add-question-btn" style="margin-bottom:16px;">+ Add question</button>
+    <div class="project-list" id="questions-list"></div>
+  `;
+
+  const tabContent = editTab === 'sharing' ? sharingTabHtml
+    : editTab === 'danger' ? dangerTabHtml
+    : editTab === 'questions' ? questionsTabHtml
+    : settingsTabHtml;
 
   card.innerHTML = `
     ${renderTopBar()}
@@ -874,7 +950,198 @@ async function renderEditPage(projectId, editTab) {
     renderSharesList(shares, projectId);
   } else if (editTab === 'danger') {
     document.getElementById('delete-btn').addEventListener('click', () => handleDelete(projectId));
+  } else if (editTab === 'questions') {
+    document.getElementById('add-question-btn').addEventListener('click', () => showQuestionModal(projectId));
+    renderQuestionsList(questions, projectId);
   }
+}
+
+// ---- Survey questions (Edit page → Questions tab) ----
+
+const QUESTION_TYPE_LABELS = {
+  multiple_choice: 'Multiple choice',
+  rating: 'Rating (1–5)',
+  short_text: 'Short text',
+  yes_no: 'Yes / No',
+};
+
+function renderQuestionsList(questions, projectId) {
+  const list = document.getElementById('questions-list');
+  if (questions.length === 0) {
+    list.innerHTML = `<div class="empty-state">No questions yet — click "+ Add question" to create one.</div>`;
+    return;
+  }
+
+  list.innerHTML = questions.map((q, i) => `
+    <div class="project-row">
+      <div class="project-row-top">
+        <div>
+          <div class="project-row-title">${escapeHtml(q.question_text)} <span class="badge">${QUESTION_TYPE_LABELS[q.question_type]}</span> ${q.required ? '<span class="badge" style="border-color:var(--error); color:var(--error);">Required</span>' : ''}</div>
+          ${q.options ? `<div class="project-row-meta">${q.options.map(o => escapeHtml(o)).join(' · ')}</div>` : ''}
+        </div>
+        <div class="project-row-actions">
+          <button class="link-btn move-up-btn" data-id="${q.id}" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button class="link-btn move-down-btn" data-id="${q.id}" ${i === questions.length - 1 ? 'disabled' : ''}>↓</button>
+          <button class="link-btn edit-question-btn" data-id="${q.id}">Edit</button>
+          <button class="link-btn delete-question-btn" data-id="${q.id}" data-text="${escapeAttr(q.question_text)}">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.edit-question-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const q = questions.find(x => x.id === parseInt(btn.dataset.id));
+      showQuestionModal(projectId, q);
+    });
+  });
+  list.querySelectorAll('.delete-question-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleDeleteQuestion(projectId, parseInt(btn.dataset.id), btn.dataset.text));
+  });
+  list.querySelectorAll('.move-up-btn').forEach(btn => {
+    if (btn.disabled) return;
+    btn.addEventListener('click', () => handleReorderQuestion(projectId, questions, parseInt(btn.dataset.id), -1));
+  });
+  list.querySelectorAll('.move-down-btn').forEach(btn => {
+    if (btn.disabled) return;
+    btn.addEventListener('click', () => handleReorderQuestion(projectId, questions, parseInt(btn.dataset.id), 1));
+  });
+}
+
+function showQuestionModal(projectId, existingQuestion) {
+  const isEdit = !!existingQuestion;
+  const existing = existingQuestion || { question_text: '', question_type: 'short_text', options: null, required: false };
+
+  const existingOverlay = document.getElementById('question-modal-overlay');
+  if (existingOverlay) existingOverlay.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'question-modal-overlay';
+  overlay.className = 'qr-modal-overlay';
+  overlay.innerHTML = `
+    <div class="qr-modal" style="max-width:440px; text-align:left;">
+      <button type="button" class="qr-modal-close" id="question-modal-close" aria-label="Close">×</button>
+      <p class="eyebrow">${isEdit ? 'Edit question' : 'New question'}</p>
+      <h1 style="font-size:1.25rem; margin-bottom:18px;">${isEdit ? 'Edit question' : 'Add a question'}</h1>
+
+      <form id="question-form">
+        <label for="question-text-input">Question</label>
+        <input type="text" id="question-text-input" value="${escapeAttr(existing.question_text)}" placeholder="e.g. How satisfied were you?" required>
+
+        <label for="question-type-input">Answer type</label>
+        <select id="question-type-input">
+          <option value="short_text" ${existing.question_type === 'short_text' ? 'selected' : ''}>Short text</option>
+          <option value="multiple_choice" ${existing.question_type === 'multiple_choice' ? 'selected' : ''}>Multiple choice</option>
+          <option value="rating" ${existing.question_type === 'rating' ? 'selected' : ''}>Rating (1–5)</option>
+          <option value="yes_no" ${existing.question_type === 'yes_no' ? 'selected' : ''}>Yes / No</option>
+        </select>
+
+        <div id="options-field-wrap" class="${existing.question_type === 'multiple_choice' ? '' : 'hidden'}">
+          <label for="question-options-input">Options <span class="hint">(one per line, at least 2)</span></label>
+          <textarea id="question-options-input" rows="3" placeholder="Great
+Good
+Bad">${existing.options ? existing.options.join('\n') : ''}</textarea>
+        </div>
+
+        <div class="checkbox-row" style="margin-top:14px;">
+          <input type="checkbox" id="question-required-input" ${existing.required ? 'checked' : ''}>
+          <label for="question-required-input">Required</label>
+        </div>
+
+        <p class="error-msg" id="question-form-error"></p>
+        <button type="submit" id="question-form-save-btn" style="margin-top:20px;">${isEdit ? 'Save changes' : 'Add question'}</button>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  document.getElementById('question-modal-close').addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  document.getElementById('question-type-input').addEventListener('change', (e) => {
+    document.getElementById('options-field-wrap').classList.toggle('hidden', e.target.value !== 'multiple_choice');
+  });
+
+  document.getElementById('question-form').addEventListener('submit', (e) => handleSaveQuestion(e, projectId, existingQuestion ? existingQuestion.id : null));
+}
+
+async function handleSaveQuestion(e, projectId, questionId) {
+  e.preventDefault();
+  const errorEl = document.getElementById('question-form-error');
+  const btn = document.getElementById('question-form-save-btn');
+  errorEl.classList.remove('visible');
+
+  const questionType = document.getElementById('question-type-input').value;
+  const optionsRaw = document.getElementById('question-options-input').value;
+  const options = questionType === 'multiple_choice'
+    ? optionsRaw.split('\n').map(o => o.trim()).filter(Boolean)
+    : null;
+
+  const payload = {
+    question_text: document.getElementById('question-text-input').value.trim(),
+    question_type: questionType,
+    options: options,
+    required: document.getElementById('question-required-input').checked,
+  };
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const url = questionId ? `/api/projects/${projectId}/questions/${questionId}` : `/api/projects/${projectId}/questions`;
+  const method = questionId ? 'PATCH' : 'POST';
+
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || 'Something went wrong.';
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = questionId ? 'Save changes' : 'Add question';
+    return;
+  }
+
+  const modal = document.getElementById('question-modal-overlay');
+  if (modal) modal.remove();
+  showToast(questionId ? 'Question updated' : 'Question added');
+  renderEditPage(projectId, 'questions');
+}
+
+async function handleDeleteQuestion(projectId, questionId, questionText) {
+  const confirmed = window.confirm(`Delete "${questionText}"? This also deletes every answer already given to it. This can't be undone.`);
+  if (!confirmed) return;
+
+  const res = await fetch(`/api/projects/${projectId}/questions/${questionId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    alert('Could not delete — please try again.');
+    return;
+  }
+  showToast('Question deleted');
+  renderEditPage(projectId, 'questions');
+}
+
+async function handleReorderQuestion(projectId, questions, questionId, direction) {
+  const ids = questions.map(q => q.id);
+  const idx = ids.indexOf(questionId);
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= ids.length) return;
+  [ids[idx], ids[newIdx]] = [ids[newIdx], ids[idx]];
+
+  const res = await fetch(`/api/projects/${projectId}/questions/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question_ids: ids }),
+  });
+  if (!res.ok) {
+    alert('Could not reorder — please try again.');
+    return;
+  }
+  renderEditPage(projectId, 'questions');
 }
 
 let currentSubmissionPage = 1;
