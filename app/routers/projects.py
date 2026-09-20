@@ -19,13 +19,14 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user, find_user_by_identifier
 from ..database import get_db
 from ..mailer import get_smtp_config, is_smtp_configured, send_email
-from ..models import Project, ProjectShare, Submission, Nominee, User, WatchedForm, SiteSettings, SurveyQuestion, SurveyAnswer
+from ..models import Project, ProjectShare, Submission, Nominee, User, WatchedForm, SiteSettings, SurveyQuestion
 from ..schemas import (
     ProjectCreate, ProjectOut, ProjectUpdate, SubmissionOut, SubmissionListOut,
     SubmissionStatusUpdate, SubmissionStatusCounts, ShareIn, ShareOut, TransferOwnershipIn,
     SurveyQuestionCreate, SurveyQuestionUpdate, SurveyQuestionOut, SurveyQuestionReorder,
-    SurveyAnalyticsOut, QuestionAnalytics,
+    SurveyAnalyticsOut,
 )
+from ..analytics import build_survey_analytics
 from ..webhook import send_webhook_notification, build_new_form_message
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -368,34 +369,7 @@ def reorder_questions(project_id: int, payload: SurveyQuestionReorder, user: Use
 @router.get("/{project_id}/analytics", response_model=SurveyAnalyticsOut)
 def get_survey_analytics(project_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     project = _get_accessible_project_or_404(project_id, user, db)
-    total_submissions = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id).scalar()
-
-    questions_out = []
-    for question in project.survey_questions:
-        answers = (
-            db.query(SurveyAnswer)
-            .filter(SurveyAnswer.question_id == question.id)
-            .all()
-        )
-        entry = QuestionAnalytics(
-            question_id=question.id,
-            question_text=question.question_text,
-            question_type=question.question_type,
-            response_count=len(answers),
-        )
-        if question.question_type in ("multiple_choice", "yes_no"):
-            counts = {}
-            for a in answers:
-                counts[a.answer_text] = counts.get(a.answer_text, 0) + 1
-            entry.option_counts = counts
-        elif question.question_type == "rating":
-            numeric = [float(a.answer_text) for a in answers if a.answer_text and a.answer_text.replace(".", "", 1).isdigit()]
-            entry.average_rating = (sum(numeric) / len(numeric)) if numeric else None
-        elif question.question_type == "short_text":
-            entry.text_answers = [a.answer_text for a in answers]
-        questions_out.append(entry)
-
-    return SurveyAnalyticsOut(total_submissions=total_submissions, questions=questions_out)
+    return build_survey_analytics(project, db)
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)
@@ -408,6 +382,8 @@ def update_project(project_id: int, payload: ProjectUpdate, user: User = Depends
         project.type = payload.type
     if "description" in payload.model_fields_set:
         project.description = payload.description
+    if payload.public_analytics is not None:
+        project.public_analytics = payload.public_analytics
 
     db.commit()
     db.refresh(project)

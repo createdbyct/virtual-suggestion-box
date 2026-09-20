@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Results — Virtual Suggestion Box</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/theme.js"></script>
+</head>
+<body>
+
+<a href="/" class="page-brand-link">Virtual Suggestion Box</a>
+<div class="card" id="card">
+  <p class="subtitle">Loading…</p>
+</div>
+
+<script>
+const slug = window.location.pathname.split('/').filter(Boolean).pop();
+const card = document.getElementById('card');
+
+const QUESTION_TYPE_LABELS = {
+  multiple_choice: 'Multiple choice',
+  rating: 'Rating',
+  short_text: 'Short text',
+  yes_no: 'Yes / No',
+};
+
+async function load() {
+  let formRes, analyticsRes;
+  try {
+    [formRes, analyticsRes] = await Promise.all([
+      fetch(`/api/vb/${slug}`),
+      fetch(`/api/vb/${slug}/analytics`),
+    ]);
+  } catch {
+    card.innerHTML = `<p class="error-msg visible">Couldn't reach the server. Try again shortly.</p>`;
+    return;
+  }
+
+  if (!formRes.ok) {
+    card.innerHTML = `<h1>Not found</h1><p class="subtitle">This link doesn't point to a valid form.</p>`;
+    return;
+  }
+  if (analyticsRes.status === 403) {
+    card.innerHTML = `<h1>Results aren't public</h1><p class="subtitle">The owner of this form hasn't made its results public.</p>`;
+    return;
+  }
+  if (!analyticsRes.ok) {
+    card.innerHTML = `<h1>Something went wrong</h1><p class="subtitle">Couldn't load results — try again shortly.</p>`;
+    return;
+  }
+
+  const form = await formRes.json();
+  const data = await analyticsRes.json();
+  render(form, data);
+}
+
+function render(form, data) {
+  const questionsHtml = data.questions.length === 0
+    ? `<p class="hint">This form has no questions yet.</p>`
+    : data.questions.map(q => {
+        let body = '';
+        if (q.option_counts && Object.keys(q.option_counts).length > 0) {
+          const max = Math.max(...Object.values(q.option_counts));
+          body = Object.entries(q.option_counts).map(([option, count]) => {
+            const pct = q.response_count > 0 ? Math.round((count / q.response_count) * 100) : 0;
+            const barWidth = max > 0 ? Math.round((count / max) * 100) : 0;
+            return `
+              <div style="margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
+                  <span>${escapeHtml(option)}</span>
+                  <span class="hint">${count} (${pct}%)</span>
+                </div>
+                <div style="background:var(--accent-soft); border-radius:4px; height:10px; overflow:hidden;">
+                  <div style="background:var(--accent); height:100%; width:${barWidth}%;"></div>
+                </div>
+              </div>
+            `;
+          }).join('');
+        } else if (q.average_rating !== null && q.average_rating !== undefined) {
+          body = `<div style="font-size:1.4rem; font-weight:600;">${q.average_rating.toFixed(1)} <span class="hint" style="font-size:0.85rem; font-weight:400;">average, out of 5</span></div>`;
+        } else if (q.text_answers && q.text_answers.length > 0) {
+          body = q.text_answers.map(a => `<div class="submission-row" style="margin-bottom:8px; font-size:0.9rem;">${escapeHtml(a)}</div>`).join('');
+        } else {
+          body = `<p class="hint">No responses yet.</p>`;
+        }
+
+        return `
+          <div class="project-row" style="margin-bottom:14px;">
+            <div class="project-row-title" style="margin-bottom:10px;">${escapeHtml(q.question_text)} <span class="badge">${QUESTION_TYPE_LABELS[q.question_type]}</span> <span class="hint">${q.response_count} response${q.response_count === 1 ? '' : 's'}</span></div>
+            ${body}
+          </div>
+        `;
+      }).join('');
+
+  card.innerHTML = `
+    <div class="stamp stamp-icon">📊</div>
+    <p class="eyebrow">Results</p>
+    <h1>${escapeHtml(form.title)}</h1>
+    <p class="subtitle">${data.total_submissions} total submission${data.total_submissions === 1 ? '' : 's'}</p>
+    ${questionsHtml}
+  `;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+load();
+</script>
+
+</body>
+</html>

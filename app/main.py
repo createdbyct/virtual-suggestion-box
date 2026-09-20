@@ -51,6 +51,15 @@ def serve_box_page(slug: str):
     return FileResponse(STATIC_DIR / "box.html")
 
 
+@app.get("/results/{slug}")
+def serve_results_page(slug: str):
+    """Public analytics page — only reachable meaningfully if the form
+    owner turned on public_analytics; results.html fetches the real
+    data from /api/vb/{slug}/analytics and shows a permission message
+    if that's off."""
+    return FileResponse(STATIC_DIR / "results.html")
+
+
 @app.get("/edit/{token}")
 def serve_edit_page(token: str):
     """Human-facing edit page — edit.html fetches the real data from /api/edit/{token}."""

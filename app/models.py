@@ -53,6 +53,11 @@ class Project(Base):
     # Optional — shown as the form's subtitle on the public page if set;
     # falls back to a generic per-type description if left blank.
     description = Column(String, nullable=True)
+    # Owner-controlled — when true, anyone with the form's link can view
+    # its analytics (no login required), not just the owner and shared
+    # viewers. Off by default; submissions themselves are never public
+    # regardless of this setting, only the aggregated analytics are.
+    public_analytics = Column(Boolean, nullable=False, default=False)
     # Every form always accepts anonymous submissions — a name is optional,
     # never required — so there's no per-form toggle for it anymore.
     # Notifications are superadmin-only and global (see SiteSettings +

@@ -255,6 +255,7 @@ class ProjectPublicOut(BaseModel):
     type: str  # 'suggestion' | 'nomination' | 'both'
     description: Optional[str] = None
     survey_questions: List[SurveyQuestionOut] = []
+    public_analytics: bool = False
 
     class Config:
         from_attributes = True
@@ -519,6 +520,7 @@ class ProjectOut(BaseModel):
     type: str
     slug: str
     description: Optional[str] = None
+    public_analytics: bool = False
     created_at: datetime
     submission_count: int = 0
     new_submission_count: int = 0
@@ -549,6 +551,7 @@ class ProjectUpdate(BaseModel):
     title: Optional[str] = None
     type: Optional[str] = None
     description: Optional[str] = None
+    public_analytics: Optional[bool] = None
 
     @field_validator("title")
     @classmethod

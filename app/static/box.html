@@ -57,6 +57,7 @@ function renderForm(form) {
     <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : isSurveyOnly ? 'Survey' : (form.type === 'nomination' ? 'Employee recognition' : 'Idea box')}</p>
     <h1>${escapeHtml(form.title)}</h1>
     <p class="subtitle">${escapeHtml(subtitleText)}</p>
+    ${form.public_analytics ? `<a class="link-btn" href="/results/${slug}" style="margin-bottom:14px;">📊 View results</a>` : ''}
 
     <form id="submit-form">
       ${isBoth ? `

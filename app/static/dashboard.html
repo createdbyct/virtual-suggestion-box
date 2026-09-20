@@ -873,6 +873,12 @@ async function renderEditPage(projectId, editTab) {
       <label for="edit-description">Description <span class="hint">(optional)</span></label>
       <textarea id="edit-description" rows="2" placeholder="Shown to whoever opens the form — leave blank for a generic default">${escapeHtml(project.description || '')}</textarea>
 
+      <div class="checkbox-row" style="margin-top:18px;">
+        <input type="checkbox" id="edit-public-analytics" ${project.public_analytics ? 'checked' : ''}>
+        <label for="edit-public-analytics">Make analytics public</label>
+      </div>
+      <p class="hint" style="display:block; margin-top:6px;">Anyone with the link can view results (response counts, averages, etc.) — no login required. Individual submissions are never shown this way.</p>
+
       <p class="error-msg" id="edit-error"></p>
       <button type="submit" id="edit-save-btn">Save changes</button>
     </form>
@@ -1282,6 +1288,7 @@ async function handleEditSave(e, projectId) {
     title: document.getElementById('edit-title').value.trim(),
     type: document.getElementById('edit-type').value,
     description: document.getElementById('edit-description').value.trim() || null,
+    public_analytics: document.getElementById('edit-public-analytics').checked,
   };
 
   btn.disabled = true;
@@ -1551,6 +1558,9 @@ function renderSubmissionList(submissions, projectId = null, isOwner = false) {
       if (s.nomination_reason) {
         body += `<div class="field-label">Reason</div><div>${renderTruncatable(s.nomination_reason)}</div>`;
       }
+    }
+    if (s.survey_answers && s.survey_answers.length > 0) {
+      body += s.survey_answers.map(a => `<div class="field-label">${escapeHtml(a.question_text)}</div><div>${renderTruncatable(a.answer_text)}</div>`).join('');
     }
 
     const controls = projectId ? `

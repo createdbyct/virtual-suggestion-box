@@ -15,8 +15,9 @@ from ..models import Project, Submission, Nominee, WatchedForm, SiteSettings, Su
 from ..rate_limit import check_rate_limit, get_client_ip
 from ..schemas import (
     SubmissionCreate, SubmissionOut,
-    SubmissionConfirmation, ProjectPublicOut,
+    SubmissionConfirmation, ProjectPublicOut, SurveyAnalyticsOut,
 )
+from ..analytics import build_survey_analytics
 from ..webhook import send_webhook_notification, build_submission_message
 
 router = APIRouter(prefix="/api/vb", tags=["public"])
@@ -41,6 +42,17 @@ def _get_project_or_404(slug: str, db: Session) -> Project:
 def get_form(slug: str, db: Session = Depends(get_db)):
     """Public metadata for a form — used to render the submission page."""
     return _get_project_or_404(slug, db)
+
+
+@router.get("/{slug}/analytics", response_model=SurveyAnalyticsOut)
+def get_public_analytics(slug: str, db: Session = Depends(get_db)):
+    """No login required — but only actually available if the form owner
+    turned on public_analytics. Individual submissions are never exposed
+    this way, only the aggregated stats (see build_survey_analytics)."""
+    project = _get_project_or_404(slug, db)
+    if not project.public_analytics:
+        raise HTTPException(status_code=403, detail="Analytics for this form aren't public")
+    return build_survey_analytics(project, db)
 
 
 @router.post("/{slug}/submit", response_model=SubmissionConfirmation)

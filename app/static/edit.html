@@ -43,6 +43,7 @@ async function loadSubmission() {
 function renderSubmission(submission) {
   const hasSuggestion = !!submission.suggestion_text;
   const hasNomination = Array.isArray(submission.nominees) && submission.nominees.length > 0;
+  const hasSurveyAnswers = Array.isArray(submission.survey_answers) && submission.survey_answers.length > 0;
   const isBoth = hasSuggestion && hasNomination;
   const when = new Date(submission.created_at).toLocaleString();
   const who = submission.is_anonymous
@@ -60,10 +61,16 @@ function renderSubmission(submission) {
       body += `<div class="field-label">Reason</div><div style="margin-bottom:20px; white-space:pre-wrap;">${escapeHtml(submission.nomination_reason)}</div>`;
     }
   }
+  if (hasSurveyAnswers) {
+    body += submission.survey_answers.map(a => `
+      <div class="field-label">${escapeHtml(a.question_text)}</div>
+      <div style="margin-bottom:20px; white-space:pre-wrap;">${escapeHtml(a.answer_text)}</div>
+    `).join('');
+  }
 
   card.innerHTML = `
     <div class="stamp stamp-icon">👁️</div>
-    <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : (hasNomination ? 'Employee recognition' : 'Idea box')}</p>
+    <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : (hasNomination ? 'Employee recognition' : (hasSurveyAnswers && !hasSuggestion ? 'Survey' : 'Idea box'))}</p>
     <h1>Your submission</h1>
     <p class="subtitle">${who} · ${when}</p>
 
