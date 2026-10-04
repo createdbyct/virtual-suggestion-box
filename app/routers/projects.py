@@ -24,9 +24,10 @@ from ..schemas import (
     ProjectCreate, ProjectOut, ProjectUpdate, SubmissionOut, SubmissionListOut,
     SubmissionStatusUpdate, SubmissionStatusCounts, ShareIn, ShareOut, TransferOwnershipIn,
     SurveyQuestionCreate, SurveyQuestionUpdate, SurveyQuestionOut, SurveyQuestionReorder,
-    SurveyAnalyticsOut,
+    SurveyAnalyticsOut, SurveyTemplateOut, ApplyTemplateIn, ProjectCopyIn,
 )
 from ..analytics import build_survey_analytics
+from ..survey_templates import SURVEY_TEMPLATES
 from ..webhook import send_webhook_notification, build_new_form_message
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -107,6 +108,24 @@ def _get_accessible_project_or_404(project_id: int, user: User, db: Session) -> 
     return project
 
 
+def _fire_new_form_notification(project: Project, user: User, background_tasks: BackgroundTasks, db: Session):
+    """Best-effort, background — a slow/failed notification never blocks
+    form creation, same pattern as the new-submission notifications.
+    Shared by both create_project and copy_project."""
+    site_settings = db.query(SiteSettings).filter(SiteSettings.id == 1).first()
+    if site_settings and (site_settings.notification_webhook_url or site_settings.notification_email):
+        message = build_new_form_message(project.title, user.name)
+        if site_settings.notification_webhook_url:
+            background_tasks.add_task(send_webhook_notification, site_settings.notification_webhook_url, message)
+        if site_settings.notification_email:
+            smtp_config = get_smtp_config(db)  # resolved now, synchronously — db may not
+            if is_smtp_configured(smtp_config):  # still be valid by the time a background task runs
+                background_tasks.add_task(
+                    send_email, smtp_config, site_settings.notification_email,
+                    f"New form created — {project.title}", message,
+                )
+
+
 @router.post("", response_model=ProjectOut)
 def create_project(payload: ProjectCreate, background_tasks: BackgroundTasks, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # Always a short random code, like a URL shortener — no custom/vanity
@@ -130,20 +149,7 @@ def create_project(payload: ProjectCreate, background_tasks: BackgroundTasks, us
     db.add(WatchedForm(project_id=project.id))
     db.commit()
 
-    # Best-effort, background — a slow/failed notification never blocks
-    # form creation, same pattern as the new-submission notifications.
-    site_settings = db.query(SiteSettings).filter(SiteSettings.id == 1).first()
-    if site_settings and (site_settings.notification_webhook_url or site_settings.notification_email):
-        message = build_new_form_message(project.title, user.name)
-        if site_settings.notification_webhook_url:
-            background_tasks.add_task(send_webhook_notification, site_settings.notification_webhook_url, message)
-        if site_settings.notification_email:
-            smtp_config = get_smtp_config(db)  # resolved now, synchronously — db may not
-            if is_smtp_configured(smtp_config):  # still be valid by the time a background task runs
-                background_tasks.add_task(
-                    send_email, smtp_config, site_settings.notification_email,
-                    f"New form created — {project.title}", message,
-                )
+    _fire_new_form_notification(project, user, background_tasks, db)
 
     project.submission_count = 0
     project.new_submission_count = 0
@@ -151,26 +157,76 @@ def create_project(payload: ProjectCreate, background_tasks: BackgroundTasks, us
     return project
 
 
+@router.post("/{project_id}/copy", response_model=ProjectOut)
+def copy_project(
+    project_id: int, payload: ProjectCopyIn, background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """Duplicates a form's settings and questions into a brand-new form —
+    never its submissions/answers. Used both for a plain 'Copy' action
+    and for 'start from one of my templates' (same mechanism either way;
+    the result is always a fresh, non-template, non-archived form with
+    no expiration, regardless of what the source had)."""
+    source = _get_owned_project_or_404(project_id, user, db)
+    slug = _generate_short_code(db)
+
+    new_project = Project(
+        owner_id=user.id,
+        title=payload.title or f"{source.title} (copy)",
+        type=source.type,
+        slug=slug,
+        description=source.description,
+        public_analytics=source.public_analytics,
+        group_name=source.group_name,
+        is_archived=False,
+        is_template=False,
+        expires_at=None,
+    )
+    db.add(new_project)
+    db.commit()
+    db.refresh(new_project)
+
+    for q in source.survey_questions:
+        db.add(SurveyQuestion(
+            project_id=new_project.id,
+            question_text=q.question_text,
+            question_type=q.question_type,
+            options=q.options,
+            required=q.required,
+            display_order=q.display_order,
+        ))
+    db.commit()
+
+    db.add(WatchedForm(project_id=new_project.id))
+    db.commit()
+
+    _fire_new_form_notification(new_project, user, background_tasks, db)
+
+    new_project.submission_count = 0
+    new_project.new_submission_count = 0
+    new_project.is_owner = True
+    return new_project
+
+
 @router.get("", response_model=list[ProjectOut])
-def list_my_projects(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_my_projects(include_archived: bool = False, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     new_count_expr = func.sum(case((Submission.status == "new", 1), else_=0))
 
-    owned_rows = (
-        db.query(Project, func.count(Submission.id).label("submission_count"), new_count_expr.label("new_count"))
-        .outerjoin(Submission, Submission.project_id == Project.id)
+    owned_q = db.query(Project, func.count(Submission.id).label("submission_count"), new_count_expr.label("new_count")) \
+        .outerjoin(Submission, Submission.project_id == Project.id) \
         .filter(Project.owner_id == user.id)
-        .group_by(Project.id)
-        .all()
-    )
-    shared_rows = (
-        db.query(Project, func.count(Submission.id).label("submission_count"), new_count_expr.label("new_count"), User.name)
-        .join(ProjectShare, ProjectShare.project_id == Project.id)
-        .join(User, Project.owner_id == User.id)
-        .outerjoin(Submission, Submission.project_id == Project.id)
+    if not include_archived:
+        owned_q = owned_q.filter(Project.is_archived.is_(False))
+    owned_rows = owned_q.group_by(Project.id).all()
+
+    shared_q = db.query(Project, func.count(Submission.id).label("submission_count"), new_count_expr.label("new_count"), User.name) \
+        .join(ProjectShare, ProjectShare.project_id == Project.id) \
+        .join(User, Project.owner_id == User.id) \
+        .outerjoin(Submission, Submission.project_id == Project.id) \
         .filter(ProjectShare.user_id == user.id)
-        .group_by(Project.id)
-        .all()
-    )
+    if not include_archived:
+        shared_q = shared_q.filter(Project.is_archived.is_(False))
+    shared_rows = shared_q.group_by(Project.id).all()
 
     result = []
     for project, count, new_count in owned_rows:
@@ -366,6 +422,48 @@ def reorder_questions(project_id: int, payload: SurveyQuestionReorder, user: Use
     return {"status": "reordered"}
 
 
+@router.get("/templates", response_model=list[SurveyTemplateOut])
+def list_survey_templates():
+    """Built-in starter question sets — not user-creatable, just a fixed
+    curated list (see survey_templates.py)."""
+    return [
+        {"id": tid, "name": t["name"], "description": t["description"], "question_count": len(t["questions"])}
+        for tid, t in SURVEY_TEMPLATES.items()
+    ]
+
+
+@router.post("/{project_id}/questions/apply-template", response_model=list[SurveyQuestionOut])
+def apply_survey_template(project_id: int, payload: ApplyTemplateIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Appends the template's questions after whatever questions already
+    exist — never replaces or deduplicates, so applying the same
+    template twice just adds it twice. That's a deliberate, simple
+    default; if a person wants a clean slate they can delete first."""
+    project = _get_owned_project_or_404(project_id, user, db)
+    template = SURVEY_TEMPLATES.get(payload.template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    max_order = db.query(func.max(SurveyQuestion.display_order)).filter(SurveyQuestion.project_id == project.id).scalar()
+    next_order = (max_order + 1) if max_order is not None else 0
+
+    created = []
+    for i, q in enumerate(template["questions"]):
+        question = SurveyQuestion(
+            project_id=project.id,
+            question_text=q["question_text"],
+            question_type=q["question_type"],
+            options=json.dumps(q["options"]) if q["options"] else None,
+            required=q["required"],
+            display_order=next_order + i,
+        )
+        db.add(question)
+        created.append(question)
+    db.commit()
+    for question in created:
+        db.refresh(question)
+    return created
+
+
 @router.get("/{project_id}/analytics", response_model=SurveyAnalyticsOut)
 def get_survey_analytics(project_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     project = _get_accessible_project_or_404(project_id, user, db)
@@ -384,6 +482,14 @@ def update_project(project_id: int, payload: ProjectUpdate, user: User = Depends
         project.description = payload.description
     if payload.public_analytics is not None:
         project.public_analytics = payload.public_analytics
+    if "group_name" in payload.model_fields_set:
+        project.group_name = payload.group_name
+    if payload.is_archived is not None:
+        project.is_archived = payload.is_archived
+    if payload.is_template is not None:
+        project.is_template = payload.is_template
+    if "expires_at" in payload.model_fields_set:
+        project.expires_at = payload.expires_at
 
     db.commit()
     db.refresh(project)

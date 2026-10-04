@@ -136,6 +136,10 @@ def me(user: User = Depends(get_current_user)):
 @router.patch("/me", response_model=UserOut)
 def update_me(payload: UserSelfUpdateIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     user.name = payload.name
+    if "organization" in payload.model_fields_set:
+        user.organization = payload.organization
+    if "department" in payload.model_fields_set:
+        user.department = payload.department
     db.commit()
     db.refresh(user)
     return user

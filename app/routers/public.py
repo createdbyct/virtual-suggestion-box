@@ -63,6 +63,9 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
 
     project = _get_project_or_404(slug, db)
 
+    if project.expires_at and datetime.utcnow() > project.expires_at:
+        raise HTTPException(status_code=403, detail="This form is no longer accepting submissions")
+
     # Every form always accepts anonymous submissions. Whether this one
     # counts as anonymous is just whatever the submitter chose to fill in.
     is_anonymous = not bool(payload.submitter_name)
@@ -153,9 +156,11 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
 
     if global_webhook_url or global_notify_email:
         nominee_names = [n.name for n in payload.nominees] if has_nomination else []
+        survey_answer_pairs = [(a.question_text, a.answer_text) for a in submission.survey_answers]
         message = build_submission_message(
             project.title, payload.submitter_name, is_anonymous,
             submission.suggestion_text, submission.nomination_reason, nominee_names,
+            survey_answer_pairs,
         )
         if global_webhook_url:
             background_tasks.add_task(send_webhook_notification, global_webhook_url, message)

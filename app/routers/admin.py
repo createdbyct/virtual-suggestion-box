@@ -6,6 +6,7 @@ password). Superadmin-only: full data export/import (see bottom of file).
 import datetime
 import json
 import secrets
+from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import Response
@@ -20,9 +21,10 @@ from ..models import (
     SiteSettings, WatchedForm, AuthSession, PasswordResetToken, User,
 )
 from .projects import build_submissions_csv
+from ..analytics import build_survey_analytics
 from ..schemas import (
     ProjectAdminOut, SubmissionOut, UserAdminOut, UserUpdateIn,
-    AdminResetPasswordOut, SiteSettingsAdminOut,
+    AdminResetPasswordOut, SiteSettingsAdminOut, SurveyAnalyticsOut,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -144,20 +146,42 @@ def export_project_csv(project_id: int, admin: User = Depends(require_admin), db
     return build_submissions_csv(project, submissions)
 
 
+@router.get("/projects/{project_id}/analytics", response_model=SurveyAnalyticsOut)
+def get_project_analytics_admin(project_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Admin/superadmin equivalent of the owner's own analytics endpoint —
+    same shared builder, so the numbers can never drift between views."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Form not found")
+    return build_survey_analytics(project, db)
+
+
 @router.get("/users", response_model=list[UserAdminOut])
-def list_users(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
-    rows = (
-        db.query(User, func.count(Project.id).label("project_count"))
-        .outerjoin(Project, Project.owner_id == User.id)
-        .group_by(User.id)
-        .order_by(User.created_at.desc())
-        .all()
-    )
+def list_users(
+    organization: Optional[str] = None,
+    department: Optional[str] = None,
+    admin: User = Depends(require_admin), db: Session = Depends(get_db),
+):
+    q = db.query(User, func.count(Project.id).label("project_count")).outerjoin(Project, Project.owner_id == User.id)
+    if organization:
+        q = q.filter(User.organization == organization)
+    if department:
+        q = q.filter(User.department == department)
+    rows = q.group_by(User.id).order_by(User.created_at.desc()).all()
     result = []
     for user, count in rows:
         user.project_count = count
         result.append(user)
     return result
+
+
+@router.get("/users/filter-options")
+def get_user_filter_options(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Distinct organization/department values currently in use, for
+    populating the Users tab's filter dropdowns."""
+    orgs = [r[0] for r in db.query(User.organization).filter(User.organization.isnot(None)).distinct().order_by(User.organization).all()]
+    depts = [r[0] for r in db.query(User.department).filter(User.department.isnot(None)).distinct().order_by(User.department).all()]
+    return {"organizations": orgs, "departments": depts}
 
 
 @router.patch("/users/{user_id}", response_model=UserAdminOut)
@@ -184,6 +208,10 @@ def update_user(user_id: int, payload: UserUpdateIn, admin: User = Depends(requi
         target.role = payload.role
     if payload.is_active is not None:
         target.is_active = payload.is_active
+    if "organization" in payload.model_fields_set:
+        target.organization = payload.organization
+    if "department" in payload.model_fields_set:
+        target.department = payload.department
 
     db.commit()
     db.refresh(target)

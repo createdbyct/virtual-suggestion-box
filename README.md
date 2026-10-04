@@ -80,7 +80,16 @@ Every form always accepts anonymous submissions. A submitter can optionally give
 ## Survey questions (optional, on any form)
 An add-on to any form — not a separate form type — from Edit → **Questions**: multiple choice, rating (1–5), short text, or yes/no, each individually markable as required or optional, reorderable via the up/down arrows. Answered on the same submission alongside suggestions/nominations, not a separate response flow. Deleting a question deletes every historical answer to it too — same permanence as deleting a form or a submission elsewhere in this app.
 
-**Analytics** (View submissions → 📊 View analytics): response counts and percentage breakdowns for multiple-choice/yes-no questions, average score for rating questions, and the raw list of answers for short-text questions. Owner-only by default — the Edit → Settings "Make analytics public" checkbox lets anyone with the form's link view the same results (never individual submissions) at `/results/{slug}`, with a "📊 View results" link shown on the public form page whenever it's on.
+**Templates** (Questions tab → 📋 Use a template): a fixed set of built-in starter question sets — Customer Satisfaction, Event Feedback, NPS, Employee Engagement, Meeting Feedback (see `survey_templates.py`). Applying one appends its questions after whatever's already there; it never replaces or deduplicates, so applying the same template twice adds it twice.
+
+**Analytics** (View submissions → 📊 View analytics): response counts and percentage breakdowns for multiple-choice/yes-no questions, average score for rating questions, and the raw list of answers for short-text questions. Owner-only by default — the Edit → Settings "Make analytics public" checkbox lets anyone with the form's link view the same results (never individual submissions) at `/results/{slug}`. A "📊 View results" link appears on the confirmation screen right after someone submits, not on the form itself before they've answered. Admins/superadmins get the same 📊 View analytics button when viewing another user's form (Users → View forms → View submissions), backed by its own `/api/admin/projects/{id}/analytics` endpoint that shares the exact same aggregation code as the owner's view.
+
+## Form management: groups, archiving, copying, form templates, expiration
+- **Group** (Edit → Settings): a free-text tag (e.g. "HR Forms", "Q4 2026") shown as a badge in My Forms — not a separate folder structure, just a filterable label.
+- **Archive** (My Forms, per row): hides a form from the default list without deleting it — still fully functional if visited directly. "Show archived" toggles visibility.
+- **Copy** (My Forms, per row): duplicates a form's title/type/description/settings/questions into a brand-new form with its own link — never copies submissions. The copy always starts as a plain, non-template, non-archived form with no expiration, regardless of what the source had.
+- **Form templates** (Edit → Settings → "Use as a starting template"): distinct from the built-in *survey question* templates above — this flags one of *your own* forms so it shows up under "start from a template" in the New Form dialog. Picking one uses the same copy mechanism, then opens the new copy for editing.
+- **Expiration** (Edit → Settings): once the set time passes, the form stops accepting new submissions (`403` on `POST .../submit`). If the owner has also made analytics public, visiting the expired form automatically pops up the results instead of the submission form.
 
 ## Reviewing submissions
 Each submission has a status — `new`, `reviewed`, or `done` — that the owner or anyone the form is shared with can update inline while browsing. The submissions list supports text search (matches suggestion text, nomination reason, submitter name, and nominee names) and a status filter, both server-side and paginated (10 per page) so this stays usable once a form has hundreds of entries. Deleting an individual submission is owner-only, unlike status updates or viewing, which shared viewers can also do.
@@ -94,7 +103,7 @@ From `/dashboard` → find your form → **Share**:
 A form shows up in everyone's "My Forms" list who has any relationship to it — owned forms and forms shared with you both appear there, with a "Shared by {name}" badge distinguishing the ones you don't own.
 
 ## Editing your profile
-From `/dashboard` → **Account** → **Edit name**. Username and email aren't editable yet (kept simple to avoid uniqueness-collision handling on those fields for now).
+From `/dashboard` → **Account** → **Edit profile**: name, and optional organization/department (self-service). Username and email aren't editable yet (kept simple to avoid uniqueness-collision handling on those fields for now).
 
 ## Super admin & site settings
 A tier above regular admin, for whoever actually runs the site — currently
@@ -122,6 +131,10 @@ Regular admins can't view, disable, delete, or reset the password of a superadmi
 - Disable/enable an account — disabling immediately invalidates that user's active session too, not just future logins
 - Delete an account — cascades to their forms, submissions, and nominees
 - An admin can't demote, disable, or delete their own account; another admin has to do it
+- Set or edit a user's organization/department ("Edit org/dept") — same fields a user can set themselves, useful when they haven't filled them in
+- Filter the user list by organization or department using the dropdowns above it, populated from whatever values are actually in use
+- Group the user list by organization, department, or role ("Group by" dropdown) — clusters the list under headers instead of filtering anything out
+- From Users → **View forms**, group that user's forms by their group tag, type, or archived status — archived forms show an "Archived" badge and are included by default, not hidden
 
 ## Notes
 - Sessions are cookie-based (httpOnly, 14-day expiry), stored server-side in `auth_sessions` — logging out invalidates the session row, not just the cookie.

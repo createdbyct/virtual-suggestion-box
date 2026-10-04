@@ -80,8 +80,12 @@ function showQrModal(url, title) {
 
 let currentUser = null;
 let myProjects = [];
+let showArchivedForms = false;
 let allProjects = [];
 let allUsers = [];
+let userFilterOrg = '';
+let userFilterDept = '';
+let userGroupBy = 'none';
 let activeTab = 'my-forms';
 
 async function init() {
@@ -106,7 +110,7 @@ async function init() {
 }
 
 async function loadMyProjects() {
-  const res = await fetch('/api/projects');
+  const res = await fetch(`/api/projects${showArchivedForms ? '?include_archived=true' : ''}`);
   myProjects = res.ok ? await res.json() : [];
 }
 
@@ -116,7 +120,10 @@ async function loadAllProjects() {
 }
 
 async function loadUsers() {
-  const res = await fetch('/api/admin/users');
+  const params = new URLSearchParams();
+  if (userFilterOrg) params.set('organization', userFilterOrg);
+  if (userFilterDept) params.set('department', userFilterDept);
+  const res = await fetch(`/api/admin/users?${params.toString()}`);
   allUsers = res.ok ? await res.json() : [];
 }
 
@@ -201,17 +208,24 @@ function renderAccountView() {
       <div class="project-row-top">
         <div>
           <div class="project-row-title" id="profile-name-display">${escapeHtml(currentUser.name)}</div>
-          <div class="project-row-meta">@${escapeHtml(currentUser.username)} · ${escapeHtml(currentUser.email)}</div>
+          <div class="project-row-meta">@${escapeHtml(currentUser.username)} · ${escapeHtml(currentUser.email)}${currentUser.organization ? ' · ' + escapeHtml(currentUser.organization) : ''}${currentUser.department ? ' · ' + escapeHtml(currentUser.department) : ''}</div>
         </div>
         <div class="project-row-actions">
-          <button class="link-btn" id="edit-name-btn">Edit name</button>
+          <button class="link-btn" id="edit-name-btn">Edit profile</button>
         </div>
       </div>
       <form class="optional-fields hidden" id="edit-name-form">
         <label for="edit-name-input">Name</label>
         <input type="text" id="edit-name-input" value="${escapeAttr(currentUser.name)}" required>
+
+        <label for="edit-org-input">Organization <span class="hint">(optional)</span></label>
+        <input type="text" id="edit-org-input" value="${escapeAttr(currentUser.organization || '')}">
+
+        <label for="edit-dept-input">Department <span class="hint">(optional)</span></label>
+        <input type="text" id="edit-dept-input" value="${escapeAttr(currentUser.department || '')}">
+
         <p class="error-msg" id="edit-name-error"></p>
-        <button type="submit" id="save-name-btn" style="margin-top:14px;">Save name</button>
+        <button type="submit" id="save-name-btn" style="margin-top:14px;">Save changes</button>
       </form>
     </div>
 
@@ -302,13 +316,15 @@ async function handleSaveName(e) {
   errorEl.classList.remove('visible');
 
   const name = document.getElementById('edit-name-input').value.trim();
+  const organization = document.getElementById('edit-org-input').value.trim() || null;
+  const department = document.getElementById('edit-dept-input').value.trim() || null;
   btn.disabled = true;
   btn.textContent = 'Saving…';
 
   const res = await fetch('/api/auth/me', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, organization, department }),
   });
 
   if (!res.ok) {
@@ -316,7 +332,7 @@ async function handleSaveName(e) {
     errorEl.textContent = data.detail || 'Something went wrong.';
     errorEl.classList.add('visible');
     btn.disabled = false;
-    btn.textContent = 'Save name';
+    btn.textContent = 'Save changes';
     return;
   }
 
@@ -537,18 +553,44 @@ function renderMyFormsView() {
     </div>
     <p class="subtitle">Create a link, share it, and see what comes back.</p>
 
-    <p class="section-title">Your forms (${myProjects.length})</p>
+    <div class="top-bar" style="margin-bottom:4px;">
+      <p class="section-title" style="margin:0;">Your forms (${myProjects.length})</p>
+      <button type="button" class="link-btn" id="toggle-archived-btn">${showArchivedForms ? 'Hide archived' : 'Show archived'}</button>
+    </div>
     <div class="project-list" id="project-list"></div>
   `;
 
   bindChrome();
   renderMyProjectList();
   document.getElementById('new-form-btn').addEventListener('click', showNewFormModal);
+  document.getElementById('toggle-archived-btn').addEventListener('click', async () => {
+    showArchivedForms = !showArchivedForms;
+    await loadMyProjects();
+    renderMyFormsView();
+  });
 }
 
 function showNewFormModal() {
   const existing = document.getElementById('new-form-modal-overlay');
   if (existing) existing.remove();
+
+  const templates = myProjects.filter(p => p.is_template && p.is_owner);
+  const templatesHtml = templates.length > 0 ? `
+    <p class="section-title" style="margin-top:0;">Start from a template</p>
+    <div class="project-list" style="margin-bottom:20px;">
+      ${templates.map(t => `
+        <div class="project-row">
+          <div class="project-row-top">
+            <div class="project-row-title">${escapeHtml(t.title)}</div>
+            <div class="project-row-actions">
+              <button type="button" class="link-btn use-form-template-btn" data-id="${t.id}" data-title="${escapeAttr(t.title)}">Use this</button>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <p class="section-title">Or start blank</p>
+  ` : '';
 
   const overlay = document.createElement('div');
   overlay.id = 'new-form-modal-overlay';
@@ -558,6 +600,8 @@ function showNewFormModal() {
       <button type="button" class="qr-modal-close" id="new-form-modal-close" aria-label="Close">×</button>
       <p class="eyebrow">New form</p>
       <h1 style="font-size:1.25rem; margin-bottom:18px;">Create a form</h1>
+
+      ${templatesHtml}
 
       <form id="create-form">
         <label for="title">Title</label>
@@ -586,6 +630,9 @@ function showNewFormModal() {
   const close = () => overlay.remove();
   document.getElementById('new-form-modal-close').addEventListener('click', close);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.querySelectorAll('.use-form-template-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleUseFormTemplate(parseInt(btn.dataset.id), btn.dataset.title));
+  });
   document.getElementById('create-form').addEventListener('submit', handleCreate);
 }
 
@@ -601,6 +648,9 @@ function renderMyProjectList() {
     const ownershipBadge = p.is_owner
       ? ''
       : `<span class="badge badge-muted">Shared by ${escapeHtml(p.owner_name || 'someone')}</span>`;
+    const groupBadge = p.group_name ? ` <span class="badge badge-muted">${escapeHtml(p.group_name)}</span>` : '';
+    const templateBadge = p.is_template ? ` <span class="badge">Template</span>` : '';
+    const archivedBadge = p.is_archived ? ` <span class="badge badge-muted">Archived</span>` : '';
 
     const needsReviewBadge = p.new_submission_count > 0
       ? ` <span class="badge status-badge-new">${p.new_submission_count} need${p.new_submission_count === 1 ? 's' : ''} review</span>`
@@ -610,7 +660,7 @@ function renderMyProjectList() {
       <div class="project-row">
         <div class="project-row-top">
           <div>
-            <div class="project-row-title">${escapeHtml(p.title)} ${typeBadges(p.type)} ${ownershipBadge}</div>
+            <div class="project-row-title">${escapeHtml(p.title)} ${typeBadges(p.type)}${groupBadge}${templateBadge}${archivedBadge} ${ownershipBadge}</div>
             <div class="project-row-meta">${url} · <strong>${p.submission_count}</strong> submission${p.submission_count === 1 ? '' : 's'}${needsReviewBadge}</div>
           </div>
           <div class="project-row-actions">
@@ -619,6 +669,8 @@ function renderMyProjectList() {
             <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(p.title)}">QR Code to share</button>
             <button class="link-btn view-submissions-btn" data-id="${p.id}">View submissions</button>
             ${p.is_owner ? `<button class="link-btn edit-form-btn" data-id="${p.id}">Edit</button>` : ''}
+            ${p.is_owner ? `<button class="link-btn copy-form-btn" data-id="${p.id}" data-title="${escapeAttr(p.title)}">Copy</button>` : ''}
+            ${p.is_owner ? `<button class="link-btn archive-form-btn" data-id="${p.id}" data-archived="${p.is_archived}">${p.is_archived ? 'Unarchive' : 'Archive'}</button>` : ''}
           </div>
         </div>
       </div>
@@ -640,6 +692,60 @@ function renderMyProjectList() {
   list.querySelectorAll('.edit-form-btn').forEach(btn => {
     btn.addEventListener('click', () => renderEditPage(parseInt(btn.dataset.id)));
   });
+  list.querySelectorAll('.copy-form-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleCopyForm(parseInt(btn.dataset.id), btn.dataset.title));
+  });
+  list.querySelectorAll('.archive-form-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleToggleArchive(parseInt(btn.dataset.id), btn.dataset.archived === 'true'));
+  });
+}
+
+async function handleUseFormTemplate(projectId, title) {
+  const res = await fetch(`/api/projects/${projectId}/copy`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    alert('Could not start from that template — please try again.');
+    return;
+  }
+  const newProject = await res.json();
+  const modal = document.getElementById('new-form-modal-overlay');
+  if (modal) modal.remove();
+  showToast(`Started from "${title}"`);
+  await loadMyProjects();
+  renderEditPage(newProject.id);
+}
+
+async function handleCopyForm(projectId, title) {
+  const res = await fetch(`/api/projects/${projectId}/copy`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    alert('Could not copy that form — please try again.');
+    return;
+  }
+  showToast(`Copied "${title}"`);
+  await loadMyProjects();
+  renderMyFormsView();
+}
+
+async function handleToggleArchive(projectId, currentlyArchived) {
+  const res = await fetch(`/api/projects/${projectId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ is_archived: !currentlyArchived }),
+  });
+  if (!res.ok) {
+    alert('Could not update — please try again.');
+    return;
+  }
+  showToast(currentlyArchived ? 'Form unarchived' : 'Form archived');
+  await loadMyProjects();
+  renderMyFormsView();
 }
 
 async function handleCreate(e) {
@@ -691,11 +797,12 @@ async function handleCreate(e) {
 
 // ---- Form detail: one page for everything about a single form ----
 
-async function renderAnalyticsView(projectId) {
-  const project = myProjects.find(p => p.id === projectId);
+async function renderAnalyticsView(projectId, isAdmin) {
+  const project = isAdmin ? allProjects.find(p => p.id === projectId) : myProjects.find(p => p.id === projectId);
   card.innerHTML = `${renderTopBar()}<p class="subtitle">Loading…</p>`;
 
-  const res = await fetch(`/api/projects/${projectId}/analytics`);
+  const endpoint = isAdmin ? `/api/admin/projects/${projectId}/analytics` : `/api/projects/${projectId}/analytics`;
+  const res = await fetch(endpoint);
   const data = res.ok ? await res.json() : { total_submissions: 0, questions: [] };
 
   const typeLabels = { multiple_choice: 'Multiple choice', rating: 'Rating', short_text: 'Short text', yes_no: 'Yes / No' };
@@ -745,7 +852,10 @@ async function renderAnalyticsView(projectId) {
     ${questionsHtml}
   `;
 
-  document.getElementById('back-link').addEventListener('click', () => renderSubmissionsPage(projectId));
+  document.getElementById('back-link').addEventListener('click', () => {
+    if (isAdmin) renderAdminSubmissionsView(projectId);
+    else renderSubmissionsPage(projectId);
+  });
   bindChrome();
 }
 
@@ -879,6 +989,18 @@ async function renderEditPage(projectId, editTab) {
       </div>
       <p class="hint" style="display:block; margin-top:6px;">Anyone with the link can view results (response counts, averages, etc.) — no login required. Individual submissions are never shown this way.</p>
 
+      <label for="edit-group" style="margin-top:18px; display:block;">Group <span class="hint">(optional)</span></label>
+      <input type="text" id="edit-group" value="${escapeAttr(project.group_name || '')}" placeholder="e.g. HR Forms, Q4 2026">
+
+      <label for="edit-expires">Expires <span class="hint">(optional — stops accepting submissions after this time)</span></label>
+      <input type="datetime-local" id="edit-expires" value="${toDatetimeLocal(project.expires_at)}">
+
+      <div class="checkbox-row" style="margin-top:18px;">
+        <input type="checkbox" id="edit-is-template" ${project.is_template ? 'checked' : ''}>
+        <label for="edit-is-template">Use as a starting template</label>
+      </div>
+      <p class="hint" style="display:block; margin-top:6px;">Shows up under "start from a template" when creating a new form. Copying a template always makes a fresh, non-template form.</p>
+
       <p class="error-msg" id="edit-error"></p>
       <button type="submit" id="edit-save-btn">Save changes</button>
     </form>
@@ -917,6 +1039,7 @@ async function renderEditPage(projectId, editTab) {
     <p class="section-title" style="margin-top:0;">Questions</p>
     <p class="hint" style="display:block; margin-bottom:14px;">Optional — add structured questions alongside suggestions/nominations. Answered on the same form, shown together with analytics on the submissions page.</p>
     <button type="button" class="link-btn" id="add-question-btn" style="margin-bottom:16px;">+ Add question</button>
+    <button type="button" class="link-btn" id="use-template-btn" style="margin-bottom:16px;">📋 Use a template</button>
     <div class="project-list" id="questions-list"></div>
   `;
 
@@ -958,6 +1081,7 @@ async function renderEditPage(projectId, editTab) {
     document.getElementById('delete-btn').addEventListener('click', () => handleDelete(projectId));
   } else if (editTab === 'questions') {
     document.getElementById('add-question-btn').addEventListener('click', () => showQuestionModal(projectId));
+    document.getElementById('use-template-btn').addEventListener('click', () => showTemplateModal(projectId));
     renderQuestionsList(questions, projectId);
   }
 }
@@ -1150,6 +1274,72 @@ async function handleReorderQuestion(projectId, questions, questionId, direction
   renderEditPage(projectId, 'questions');
 }
 
+async function showTemplateModal(projectId) {
+  const existingOverlay = document.getElementById('template-modal-overlay');
+  if (existingOverlay) existingOverlay.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'template-modal-overlay';
+  overlay.className = 'qr-modal-overlay';
+  overlay.innerHTML = `
+    <div class="qr-modal" style="max-width:460px; text-align:left;">
+      <button type="button" class="qr-modal-close" id="template-modal-close" aria-label="Close">×</button>
+      <p class="eyebrow">Templates</p>
+      <h1 style="font-size:1.25rem; margin-bottom:18px;">Use a template</h1>
+      <p class="hint" style="display:block; margin-bottom:16px;">Adds these questions after whatever's already on this form — doesn't replace anything.</p>
+      <div id="template-list"><p class="subtitle">Loading…</p></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  document.getElementById('template-modal-close').addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  const res = await fetch('/api/projects/templates');
+  const templates = res.ok ? await res.json() : [];
+  const list = document.getElementById('template-list');
+
+  if (templates.length === 0) {
+    list.innerHTML = `<p class="hint">No templates available.</p>`;
+    return;
+  }
+
+  list.innerHTML = templates.map(t => `
+    <div class="project-row" style="margin-bottom:10px;">
+      <div class="project-row-top">
+        <div>
+          <div class="project-row-title">${escapeHtml(t.name)}</div>
+          <div class="project-row-meta">${escapeHtml(t.description)} · ${t.question_count} question${t.question_count === 1 ? '' : 's'}</div>
+        </div>
+        <div class="project-row-actions">
+          <button class="link-btn use-template-option-btn" data-id="${t.id}">Use this</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.use-template-option-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleApplyTemplate(projectId, btn.dataset.id));
+  });
+}
+
+async function handleApplyTemplate(projectId, templateId) {
+  const res = await fetch(`/api/projects/${projectId}/questions/apply-template`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template_id: templateId }),
+  });
+  if (!res.ok) {
+    alert('Could not apply that template — please try again.');
+    return;
+  }
+  const modal = document.getElementById('template-modal-overlay');
+  if (modal) modal.remove();
+  showToast('Template applied');
+  renderEditPage(projectId, 'questions');
+}
+
 let currentSubmissionPage = 1;
 let currentSubmissionSearch = '';
 let currentSubmissionStatus = '';
@@ -1284,11 +1474,15 @@ async function handleEditSave(e, projectId) {
   const btn = document.getElementById('edit-save-btn');
   errorEl.classList.remove('visible');
 
+  const expiresRaw = document.getElementById('edit-expires').value;
   const payload = {
     title: document.getElementById('edit-title').value.trim(),
     type: document.getElementById('edit-type').value,
     description: document.getElementById('edit-description').value.trim() || null,
     public_analytics: document.getElementById('edit-public-analytics').checked,
+    group_name: document.getElementById('edit-group').value.trim() || null,
+    expires_at: expiresRaw ? new Date(expiresRaw).toISOString() : null,
+    is_template: document.getElementById('edit-is-template').checked,
   };
 
   btn.disabled = true;
@@ -1447,15 +1641,32 @@ async function handleTransferOwnership(e, projectId, projectTitle) {
 
 // ---- All Forms tab (admin only) ----
 
+let userFormsGroupBy = 'none';
+
 function renderUserFormsView(userId, userName) {
   card.innerHTML = `
     ${renderTopBar()}
     <a class="back-link" id="back-link">&larr; Back to users</a>
-    <h1>${escapeHtml(userName)}'s forms</h1>
-    <p class="subtitle">Every form owned by this user.</p>
+    <div class="top-bar" style="margin-bottom:4px;">
+      <h1 style="margin:0;">${escapeHtml(userName)}'s forms</h1>
+      <div>
+        <label for="user-forms-group-by" class="hint">Group by</label>
+        <select id="user-forms-group-by" style="width:auto; display:inline-block; margin-left:6px;">
+          <option value="none" ${userFormsGroupBy === 'none' ? 'selected' : ''}>None</option>
+          <option value="group" ${userFormsGroupBy === 'group' ? 'selected' : ''}>Group</option>
+          <option value="type" ${userFormsGroupBy === 'type' ? 'selected' : ''}>Type</option>
+          <option value="archived" ${userFormsGroupBy === 'archived' ? 'selected' : ''}>Archived status</option>
+        </select>
+      </div>
+    </div>
+    <p class="subtitle">Every form owned by this user, including archived ones.</p>
     <div class="project-list" id="user-forms-list"></div>
   `;
   document.getElementById('back-link').addEventListener('click', renderUsersView);
+  document.getElementById('user-forms-group-by').addEventListener('change', (e) => {
+    userFormsGroupBy = e.target.value;
+    renderUserFormsView(userId, userName);
+  });
   bindChrome();
 
   const forms = allProjects.filter(p => p.owner_id === userId);
@@ -1465,8 +1676,9 @@ function renderUserFormsView(userId, userName) {
     return;
   }
 
-  list.innerHTML = forms.map(p => {
+  const renderRow = (p) => {
     const url = `${window.location.origin}/vb/${p.slug}`;
+    const archivedBadge = p.is_archived ? ` <span class="badge badge-muted">Archived</span>` : '';
     const needsReviewBadge = p.new_submission_count > 0
       ? ` <span class="badge status-badge-new">${p.new_submission_count} need${p.new_submission_count === 1 ? 's' : ''} review</span>`
       : '';
@@ -1474,7 +1686,7 @@ function renderUserFormsView(userId, userName) {
       <div class="project-row">
         <div class="project-row-top">
           <div>
-            <div class="project-row-title">${escapeHtml(p.title)} ${typeBadges(p.type)}</div>
+            <div class="project-row-title">${escapeHtml(p.title)} ${typeBadges(p.type)}${archivedBadge}</div>
             <div class="project-row-meta">${url} · <strong>${p.submission_count}</strong> submission${p.submission_count === 1 ? '' : 's'}${needsReviewBadge}</div>
           </div>
           <div class="project-row-actions">
@@ -1484,7 +1696,28 @@ function renderUserFormsView(userId, userName) {
         </div>
       </div>
     `;
-  }).join('');
+  };
+
+  const typeLabels = { suggestion: 'Suggestions', nomination: 'Nominations', both: 'Suggestions + Nominations', survey: 'Survey' };
+  let groupKeyFn = null;
+  if (userFormsGroupBy === 'group') groupKeyFn = (p) => p.group_name || 'Ungrouped';
+  else if (userFormsGroupBy === 'type') groupKeyFn = (p) => typeLabels[p.type] || p.type;
+  else if (userFormsGroupBy === 'archived') groupKeyFn = (p) => p.is_archived ? 'Archived' : 'Active';
+
+  if (!groupKeyFn) {
+    list.innerHTML = forms.map(renderRow).join('');
+  } else {
+    const groups = {};
+    forms.forEach(p => {
+      const key = groupKeyFn(p);
+      (groups[key] = groups[key] || []).push(p);
+    });
+    const sortedKeys = Object.keys(groups).sort();
+    list.innerHTML = sortedKeys.map(key => `
+      <p class="section-title" style="margin-top:18px;">${escapeHtml(key)} (${groups[key].length})</p>
+      ${groups[key].map(renderRow).join('')}
+    `).join('');
+  }
 
   list.querySelectorAll('.view-admin-submissions-btn').forEach(btn => {
     btn.addEventListener('click', () => renderAdminSubmissionsView(parseInt(btn.dataset.id)));
@@ -1504,6 +1737,7 @@ async function renderAdminSubmissionsView(projectId) {
     <h1>${escapeHtml(project.title)} ${typeBadges(project.type)}</h1>
     <p class="subtitle">Owned by ${escapeHtml(project.owner_email)} · ${submissions.length} submission${submissions.length === 1 ? '' : 's'}</p>
     <button class="link-btn" id="admin-export-btn" style="margin-bottom:16px;">Export CSV</button>
+    <button class="link-btn" id="admin-analytics-btn" style="margin-bottom:16px;">📊 View analytics</button>
     <div class="submission-list" id="submission-list"></div>
   `;
 
@@ -1511,6 +1745,7 @@ async function renderAdminSubmissionsView(projectId) {
   document.getElementById('admin-export-btn').addEventListener('click', () => {
     window.location.href = `/api/admin/projects/${projectId}/export.csv`;
   });
+  document.getElementById('admin-analytics-btn').addEventListener('click', () => renderAnalyticsView(projectId, true));
   bindChrome();
   renderSubmissionList(submissions);
 }
@@ -1642,24 +1877,72 @@ async function handleDeleteSubmission(projectId, submissionId) {
 
 // ---- Users tab (admin only) ----
 
-function renderUsersView() {
+async function renderUsersView() {
   activeTab = 'users';
   card.innerHTML = `
     ${renderTopBar()}
     ${renderTabs()}
     <h1>All users</h1>
     <p class="subtitle">Promote, disable, or remove accounts.</p>
+    <div class="form-row" style="margin-bottom:16px;">
+      <div>
+        <label for="user-filter-org">Organization</label>
+        <select id="user-filter-org"><option value="">All</option></select>
+      </div>
+      <div>
+        <label for="user-filter-dept">Department</label>
+        <select id="user-filter-dept"><option value="">All</option></select>
+      </div>
+      <div>
+        <label for="user-group-by">Group by</label>
+        <select id="user-group-by">
+          <option value="none" ${userGroupBy === 'none' ? 'selected' : ''}>None</option>
+          <option value="organization" ${userGroupBy === 'organization' ? 'selected' : ''}>Organization</option>
+          <option value="department" ${userGroupBy === 'department' ? 'selected' : ''}>Department</option>
+          <option value="role" ${userGroupBy === 'role' ? 'selected' : ''}>Role</option>
+        </select>
+      </div>
+    </div>
     <div class="project-list" id="user-list"></div>
   `;
   bindChrome();
 
+  const optionsRes = await fetch('/api/admin/users/filter-options');
+  const filterOptions = optionsRes.ok ? await optionsRes.json() : { organizations: [], departments: [] };
+  const orgSelect = document.getElementById('user-filter-org');
+  const deptSelect = document.getElementById('user-filter-dept');
+  filterOptions.organizations.forEach(o => {
+    orgSelect.innerHTML += `<option value="${escapeAttr(o)}" ${userFilterOrg === o ? 'selected' : ''}>${escapeHtml(o)}</option>`;
+  });
+  filterOptions.departments.forEach(d => {
+    deptSelect.innerHTML += `<option value="${escapeAttr(d)}" ${userFilterDept === d ? 'selected' : ''}>${escapeHtml(d)}</option>`;
+  });
+  orgSelect.addEventListener('change', async () => {
+    userFilterOrg = orgSelect.value;
+    await loadUsers();
+    renderUsersView();
+  });
+  deptSelect.addEventListener('change', async () => {
+    userFilterDept = deptSelect.value;
+    await loadUsers();
+    renderUsersView();
+  });
+  document.getElementById('user-group-by').addEventListener('change', (e) => {
+    userGroupBy = e.target.value;
+    renderUsersList();
+  });
+
+  renderUsersList();
+}
+
+function renderUsersList() {
   const list = document.getElementById('user-list');
   if (allUsers.length === 0) {
-    list.innerHTML = `<div class="empty-state">No users yet.</div>`;
+    list.innerHTML = `<div class="empty-state">No users match these filters.</div>`;
     return;
   }
 
-  list.innerHTML = allUsers.map(u => {
+  const renderRow = (u) => {
     const isSelf = u.id === currentUser.id;
     const isTargetSuperadmin = u.role === 'superadmin';
     const viewerIsSuperadmin = currentUser.role === 'superadmin';
@@ -1677,16 +1960,19 @@ function renderUsersView() {
       ? ''
       : `<span class="badge badge-error">Disabled</span>`;
     const joined = new Date(u.created_at).toLocaleDateString();
+    const orgDeptText = [u.organization, u.department].filter(Boolean).join(' · ');
 
     return `
       <div class="user-row">
         <div class="user-row-info">
           <div class="user-row-email">${escapeHtml(u.name)} ${roleBadge} ${statusBadge}</div>
           <div class="user-row-meta">@${escapeHtml(u.username)} · ${escapeHtml(u.email)} · ${u.project_count} form${u.project_count === 1 ? '' : 'es'} · joined ${joined}${u.totp_enabled ? ' · 2FA on' : ''}${isSelf ? ' · this is you' : ''}</div>
+          ${orgDeptText ? `<div class="user-row-meta">${escapeHtml(orgDeptText)}</div>` : ''}
         </div>
         <div class="project-row-actions">
           <button class="link-btn view-user-forms-btn" data-id="${u.id}" data-name="${escapeAttr(u.name)}">View forms (${u.project_count})</button>
           ${canManage ? `
+            <button class="link-btn edit-org-btn" data-id="${u.id}" data-org="${escapeAttr(u.organization || '')}" data-dept="${escapeAttr(u.department || '')}">Edit org/dept</button>
             ${isTargetSuperadmin ? '' : `<button class="link-btn role-btn" data-id="${u.id}" data-role="${u.role}">${u.role === 'admin' ? 'Make owner' : 'Make admin'}</button>`}
             <button class="link-btn active-btn" data-id="${u.id}" data-active="${u.is_active}">${u.is_active ? 'Disable' : 'Enable'}</button>
             <button class="link-btn reset-password-btn" data-id="${u.id}" data-name="${escapeAttr(u.name)}">Reset password</button>
@@ -1695,7 +1981,31 @@ function renderUsersView() {
         </div>
       </div>
     `;
-  }).join('');
+  };
+
+  let groupKeyFn = null;
+  if (userGroupBy === 'organization') groupKeyFn = (u) => u.organization || 'No organization';
+  else if (userGroupBy === 'department') groupKeyFn = (u) => u.department || 'No department';
+  else if (userGroupBy === 'role') groupKeyFn = (u) => u.role === 'superadmin' ? 'Super Admin' : u.role === 'admin' ? 'Admin' : 'Owner';
+
+  if (!groupKeyFn) {
+    list.innerHTML = allUsers.map(renderRow).join('');
+  } else {
+    const groups = {};
+    allUsers.forEach(u => {
+      const key = groupKeyFn(u);
+      (groups[key] = groups[key] || []).push(u);
+    });
+    const sortedKeys = Object.keys(groups).sort();
+    list.innerHTML = sortedKeys.map(key => `
+      <p class="section-title" style="margin-top:18px;">${escapeHtml(key)} (${groups[key].length})</p>
+      ${groups[key].map(renderRow).join('')}
+    `).join('');
+  }
+
+  list.querySelectorAll('.edit-org-btn').forEach(btn => {
+    btn.addEventListener('click', () => showEditOrgModal(parseInt(btn.dataset.id), btn.dataset.org, btn.dataset.dept));
+  });
 
   list.querySelectorAll('.view-user-forms-btn').forEach(btn => {
     btn.addEventListener('click', () => renderUserFormsView(parseInt(btn.dataset.id), btn.dataset.name));
@@ -2070,6 +2380,70 @@ async function handleSaveNotificationSettings(e) {
   btn.textContent = 'Save settings';
 }
 
+function showEditOrgModal(userId, currentOrg, currentDept) {
+  const existing = document.getElementById('edit-org-modal-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'edit-org-modal-overlay';
+  overlay.className = 'qr-modal-overlay';
+  overlay.innerHTML = `
+    <div class="qr-modal" style="max-width:400px; text-align:left;">
+      <button type="button" class="qr-modal-close" id="edit-org-modal-close" aria-label="Close">×</button>
+      <p class="eyebrow">Edit user</p>
+      <h1 style="font-size:1.25rem; margin-bottom:18px;">Organization &amp; department</h1>
+
+      <form id="edit-org-form">
+        <label for="edit-org-modal-input">Organization</label>
+        <input type="text" id="edit-org-modal-input" value="${escapeAttr(currentOrg)}">
+
+        <label for="edit-dept-modal-input">Department</label>
+        <input type="text" id="edit-dept-modal-input" value="${escapeAttr(currentDept)}">
+
+        <p class="error-msg" id="edit-org-modal-error"></p>
+        <button type="submit" id="edit-org-modal-save-btn" style="margin-top:18px;">Save</button>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  document.getElementById('edit-org-modal-close').addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  document.getElementById('edit-org-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('edit-org-modal-error');
+    const btn = document.getElementById('edit-org-modal-save-btn');
+    errorEl.classList.remove('visible');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    const organization = document.getElementById('edit-org-modal-input').value.trim() || null;
+    const department = document.getElementById('edit-dept-modal-input').value.trim() || null;
+
+    const res = await fetch(`/api/admin/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ organization, department }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      errorEl.textContent = data.detail || 'Something went wrong.';
+      errorEl.classList.add('visible');
+      btn.disabled = false;
+      btn.textContent = 'Save';
+      return;
+    }
+
+    close();
+    showToast('Updated');
+    await loadUsers();
+    renderUsersView();
+  });
+}
+
 async function handleUserUpdate(userId, payload) {
   const res = await fetch(`/api/admin/users/${userId}`, {
     method: 'PATCH',
@@ -2107,6 +2481,15 @@ function escapeHtml(str) {
 
 function escapeAttr(str) {
   return escapeHtml(str).replace(/"/g, '&quot;');
+}
+
+function toDatetimeLocal(isoString) {
+  // <input type="datetime-local"> wants "YYYY-MM-DDTHH:mm" in the
+  // viewer's local time, not the raw ISO string the API returns.
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 init();

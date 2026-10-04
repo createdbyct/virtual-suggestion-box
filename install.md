@@ -211,7 +211,7 @@ the actual submission (or form creation).
 - **Email** — requires SMTP configured just below it on the same tab (or via env vars — see above).
 
 Two separate triggers use these same channels:
-- **New submission** on a watched form.
+- **New submission** on a watched form — the message includes the suggestion text, nominees/reason, and every survey question with its answer (long answers are truncated in the preview).
 - **New form created**, by anyone — every new form is watched automatically, so you don't have to remember to go check a box each time. Unwatch individual forms from Site Settings → Notifications → "Forms to notify me about" if you don't want to hear about a specific one.
 
 ## Troubleshooting

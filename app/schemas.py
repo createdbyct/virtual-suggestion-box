@@ -107,6 +107,29 @@ class SurveyQuestionReorder(BaseModel):
     question_ids: List[int]  # full ordered list of every question's id for this form
 
 
+class SurveyTemplateOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    question_count: int
+
+
+class ApplyTemplateIn(BaseModel):
+    template_id: str
+
+
+class ProjectCopyIn(BaseModel):
+    title: Optional[str] = None  # defaults to "{original title} (copy)" if omitted
+
+    @field_validator("title")
+    @classmethod
+    def title_blank_to_none(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+
 class SurveyQuestionOut(BaseModel):
     id: int
     question_text: str
@@ -256,6 +279,7 @@ class ProjectPublicOut(BaseModel):
     description: Optional[str] = None
     survey_questions: List[SurveyQuestionOut] = []
     public_analytics: bool = False
+    expires_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -307,6 +331,8 @@ class UserOut(BaseModel):
     email: str
     role: str
     totp_enabled: bool
+    organization: Optional[str] = None
+    department: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -322,6 +348,8 @@ class UserAdminOut(BaseModel):
     totp_enabled: bool
     created_at: datetime
     project_count: int = 0
+    organization: Optional[str] = None
+    department: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -330,6 +358,8 @@ class UserAdminOut(BaseModel):
 class UserUpdateIn(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
+    organization: Optional[str] = None
+    department: Optional[str] = None
 
     @field_validator("role")
     @classmethod
@@ -338,9 +368,19 @@ class UserUpdateIn(BaseModel):
             raise ValueError("role must be 'admin' or 'owner'")
         return v
 
+    @field_validator("organization", "department")
+    @classmethod
+    def blank_to_none(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
 
 class UserSelfUpdateIn(BaseModel):
     name: str
+    organization: Optional[str] = None
+    department: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -349,6 +389,14 @@ class UserSelfUpdateIn(BaseModel):
         if not v:
             raise ValueError("name cannot be blank")
         return v
+
+    @field_validator("organization", "department")
+    @classmethod
+    def blank_to_none(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
 
 # ---- Password reset ----
@@ -521,6 +569,10 @@ class ProjectOut(BaseModel):
     slug: str
     description: Optional[str] = None
     public_analytics: bool = False
+    group_name: Optional[str] = None
+    is_archived: bool = False
+    is_template: bool = False
+    expires_at: Optional[datetime] = None
     created_at: datetime
     submission_count: int = 0
     new_submission_count: int = 0
@@ -552,6 +604,18 @@ class ProjectUpdate(BaseModel):
     type: Optional[str] = None
     description: Optional[str] = None
     public_analytics: Optional[bool] = None
+    group_name: Optional[str] = None
+    is_archived: Optional[bool] = None
+    is_template: Optional[bool] = None
+    expires_at: Optional[datetime] = None
+
+    @field_validator("group_name")
+    @classmethod
+    def blank_group_to_none(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
     @field_validator("title")
     @classmethod

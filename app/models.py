@@ -28,6 +28,10 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     role = Column(String, nullable=False, default="owner")
     is_active = Column(Boolean, nullable=False, default=True)
+    # Optional — self-service on the Account page, or set by a superadmin
+    # for a user who hasn't filled them in. Free text, not a fixed list.
+    organization = Column(String, nullable=True)
+    department = Column(String, nullable=True)
     # 2FA (TOTP) — secret is only meaningful once totp_enabled is True.
     # A secret can exist while disabled (mid-setup, not yet confirmed);
     # only a confirmed code flips totp_enabled on.
@@ -58,6 +62,22 @@ class Project(Base):
     # viewers. Off by default; submissions themselves are never public
     # regardless of this setting, only the aggregated analytics are.
     public_analytics = Column(Boolean, nullable=False, default=False)
+    # Free-text grouping tag — lets an owner cluster related forms
+    # together in their list (e.g. "Q4 2026", "HR Forms"). Not a
+    # separate Group entity, just a filterable/groupable string.
+    group_name = Column(String, nullable=True)
+    # Archived forms are hidden from the default My Forms view but not
+    # deleted — still fully functional if visited directly, just tucked
+    # away. Independent of expires_at below.
+    is_archived = Column(Boolean, nullable=False, default=False)
+    # Marks this form as a reusable starting point — shows up in the
+    # "start from one of my templates" list when creating a new form.
+    # Uses the same duplicate mechanism as the plain "Copy" action.
+    is_template = Column(Boolean, nullable=False, default=False)
+    # Optional — once past, the public form stops accepting new
+    # submissions (see routers/public.py's submit endpoint). Null means
+    # no expiration at all.
+    expires_at = Column(DateTime, nullable=True)
     # Every form always accepts anonymous submissions — a name is optional,
     # never required — so there's no per-form toggle for it anymore.
     # Notifications are superadmin-only and global (see SiteSettings +

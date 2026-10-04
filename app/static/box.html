@@ -35,7 +35,89 @@ async function loadForm() {
   }
   const form = await res.json();
   document.body.setAttribute('data-kind', form.type === 'nomination' ? 'nomination' : 'suggestion');
+
+  const isExpired = form.expires_at && new Date(form.expires_at) < new Date();
+  if (isExpired) {
+    renderExpiredForm(form);
+    if (form.public_analytics) showResultsPopup(form);
+    return;
+  }
   renderForm(form);
+}
+
+function renderExpiredForm(form) {
+  card.innerHTML = `
+    <p class="eyebrow">Closed</p>
+    <h1>${escapeHtml(form.title)}</h1>
+    <p class="subtitle">This form is no longer accepting submissions.</p>
+    ${form.public_analytics ? `<a href="/results/${slug}" class="link-btn" style="width:100%; justify-content:center; margin-top:14px;">📊 View results</a>` : ''}
+  `;
+}
+
+async function showResultsPopup(form) {
+  const overlay = document.createElement('div');
+  overlay.id = 'results-popup-overlay';
+  overlay.className = 'qr-modal-overlay';
+  overlay.innerHTML = `
+    <div class="qr-modal" style="max-width:480px; text-align:left;">
+      <button type="button" class="qr-modal-close" id="results-popup-close" aria-label="Close">×</button>
+      <p class="eyebrow">Results</p>
+      <h1 style="font-size:1.25rem; margin-bottom:14px;">${escapeHtml(form.title)}</h1>
+      <div id="results-popup-body"><p class="subtitle">Loading…</p></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('results-popup-close').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+  const res = await fetch(`/api/vb/${slug}/analytics`);
+  const body = document.getElementById('results-popup-body');
+  if (!res.ok) {
+    body.innerHTML = `<p class="hint">Couldn't load results.</p>`;
+    return;
+  }
+  const data = await res.json();
+  body.innerHTML = renderAnalyticsSummary(data);
+}
+
+function renderAnalyticsSummary(data) {
+  if (data.questions.length === 0) {
+    return `<p class="hint">No questions on this form.</p>`;
+  }
+  return `<p class="subtitle" style="margin-bottom:14px;">${data.total_submissions} total submission${data.total_submissions === 1 ? '' : 's'}</p>` +
+    data.questions.map(q => {
+      let body = '';
+      if (q.option_counts && Object.keys(q.option_counts).length > 0) {
+        const max = Math.max(...Object.values(q.option_counts));
+        body = Object.entries(q.option_counts).map(([option, count]) => {
+          const pct = q.response_count > 0 ? Math.round((count / q.response_count) * 100) : 0;
+          const barWidth = max > 0 ? Math.round((count / max) * 100) : 0;
+          return `
+            <div style="margin-bottom:8px;">
+              <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:3px;">
+                <span>${escapeHtml(option)}</span>
+                <span class="hint">${count} (${pct}%)</span>
+              </div>
+              <div style="background:var(--accent-soft); border-radius:4px; height:8px; overflow:hidden;">
+                <div style="background:var(--accent); height:100%; width:${barWidth}%;"></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } else if (q.average_rating !== null && q.average_rating !== undefined) {
+        body = `<div style="font-size:1.2rem; font-weight:600;">${q.average_rating.toFixed(1)} <span class="hint" style="font-size:0.8rem; font-weight:400;">avg / 5</span></div>`;
+      } else if (q.text_answers && q.text_answers.length > 0) {
+        body = q.text_answers.slice(0, 5).map(a => `<div class="submission-row" style="margin-bottom:6px; font-size:0.85rem;">${escapeHtml(a)}</div>`).join('');
+      } else {
+        body = `<p class="hint">No responses yet.</p>`;
+      }
+      return `
+        <div style="margin-bottom:16px;">
+          <div style="font-weight:600; font-size:0.9rem; margin-bottom:8px;">${escapeHtml(q.question_text)}</div>
+          ${body}
+        </div>
+      `;
+    }).join('');
 }
 
 function renderForm(form) {
@@ -57,7 +139,6 @@ function renderForm(form) {
     <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : isSurveyOnly ? 'Survey' : (form.type === 'nomination' ? 'Employee recognition' : 'Idea box')}</p>
     <h1>${escapeHtml(form.title)}</h1>
     <p class="subtitle">${escapeHtml(subtitleText)}</p>
-    ${form.public_analytics ? `<a class="link-btn" href="/results/${slug}" style="margin-bottom:14px;">📊 View results</a>` : ''}
 
     <form id="submit-form">
       ${isBoth ? `
@@ -139,7 +220,7 @@ function renderForm(form) {
     });
   }
 
-  document.getElementById('submit-form').addEventListener('submit', (e) => handleSubmit(e, isBoth));
+  document.getElementById('submit-form').addEventListener('submit', (e) => handleSubmit(e, isBoth, form.public_analytics));
 }
 
 function addNomineeRow() {
@@ -198,7 +279,7 @@ function collectSurveyAnswers() {
   return answers.length > 0 ? answers : null;
 }
 
-async function handleSubmit(e, isBoth) {
+async function handleSubmit(e, isBoth, publicAnalytics) {
   e.preventDefault();
   const errorEl = document.getElementById('error-msg');
   const btn = document.getElementById('submit-btn');
@@ -253,7 +334,7 @@ async function handleSubmit(e, isBoth) {
   }
 
   const data = await res.json();
-  renderConfirmation(data);
+  renderConfirmation(data, publicAnalytics);
 }
 
 function showError(msg) {
@@ -265,7 +346,7 @@ function showError(msg) {
   btn.textContent = 'Submit';
 }
 
-function renderConfirmation(data) {
+function renderConfirmation(data, publicAnalytics) {
   const editUrl = `${window.location.origin}${data.edit_url}`;
   card.innerHTML = `
     <div class="confirmation">
@@ -275,6 +356,7 @@ function renderConfirmation(data) {
       <div class="edit-link-box">
         <a href="${editUrl}" class="link-btn" style="width:100%; justify-content:center;">View your submission</a>
       </div>
+      ${publicAnalytics ? `<a href="/results/${slug}" class="link-btn" style="width:100%; justify-content:center; margin-top:10px;">📊 View results</a>` : ''}
     </div>
   `;
 }
