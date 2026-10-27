@@ -1736,12 +1736,13 @@ html { scroll-behavior:smooth; }
 .hx-nav-links a:not(.hx-pill):hover { background-size:100% 2px; color:var(--hx-gold); }
 .hx-brand { transition:color .2s ease; } .hx-brand:hover { color:var(--hx-gold); }
 .hx-btn:focus-visible, .hx-nav-links a:focus-visible, .hx-brand:focus-visible { outline:2px solid var(--hx-gold); outline-offset:3px; }
-.hx-feat { transition:background-color .2s ease, padding-left .2s ease; }
-.hx-feat:hover { background:var(--accent-soft); padding-left:12px; }
-/* auth pages: home link */
-.page-top .home-link { display:inline-flex; align-items:center; gap:6px; min-height:44px; padding:0 14px; border:1.5px solid var(--border-strong); border-radius:999px; color:var(--ink); text-decoration:none; font-size:.9rem; font-weight:600; background:var(--card); transition:background-color .18s, color .18s, border-color .18s, transform .18s; }
-.page-top .home-link:hover { background:var(--accent); color:var(--on-accent); border-color:var(--accent); transform:translateY(-1px); }
-.page-top .home-link:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+/* auth pages: back-to-home button (rectangular, inside the card) */
+.home-btn-wrap { margin-top:16px; padding-top:16px; border-top:1px dashed var(--border-strong); }
+#card .home-btn-wrap { text-align:center; }
+.home-btn { display:flex; align-items:center; justify-content:center; gap:8px; min-height:44px; border:1.5px solid var(--border-strong); border-radius:4px; color:var(--ink); text-decoration:none; font-size:.92rem; font-weight:600; background:transparent; transition:background-color .18s, color .18s, border-color .18s; }
+.home-btn:hover { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
+.home-btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+body > .home-btn-wrap { width:100%; max-width:620px; margin-top:12px; padding-top:0; border-top:0; }
 .page-top .page-brand-link { white-space:nowrap; }
 a.cta-link { transition:transform .18s ease, box-shadow .18s ease, filter .18s ease, background-color .18s ease, color .18s ease; }
 a.cta-link:hover { transform:translateY(-1px); filter:brightness(.92); box-shadow:0 6px 14px rgba(0,0,0,.14); }
