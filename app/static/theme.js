@@ -65,7 +65,7 @@
     const footer = document.createElement('footer');
     footer.className = 'site-footer';
     footer.id = 'site-footer';
-    footer.textContent = 'Virtual Suggestion Box — self-hosted suggestion & nomination forms.';
+    footer.textContent = 'Virtual Suggestion Box — self-hosted suggestion, nomination & survey forms.';
     document.body.appendChild(footer);
   }
 
