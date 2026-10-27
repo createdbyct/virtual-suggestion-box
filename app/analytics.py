@@ -34,6 +34,12 @@ def build_survey_analytics(project: Project, db: Session) -> SurveyAnalyticsOut:
         elif question.question_type == "rating":
             numeric = [float(a.answer_text) for a in answers if a.answer_text and a.answer_text.replace(".", "", 1).isdigit()]
             entry.average_rating = (sum(numeric) / len(numeric)) if numeric else None
+            dist = {str(n): 0 for n in range(1, 6)}
+            for v in numeric:
+                key = str(int(round(v)))
+                if key in dist:
+                    dist[key] += 1
+            entry.rating_counts = dist
         elif question.question_type == "short_text":
             entry.text_answers = [a.answer_text for a in answers]
         questions_out.append(entry)

@@ -45,7 +45,7 @@ function renderSubmission(submission) {
   const hasNomination = Array.isArray(submission.nominees) && submission.nominees.length > 0;
   const hasSurveyAnswers = Array.isArray(submission.survey_answers) && submission.survey_answers.length > 0;
   const isBoth = hasSuggestion && hasNomination;
-  const when = new Date(submission.created_at).toLocaleString();
+  const when = new Date(submission.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   const who = submission.is_anonymous
     ? 'Submitted anonymously'
     : 'Submitted' + (submission.submitter_name ? ` by ${escapeHtml(submission.submitter_name)}` : '');
@@ -69,8 +69,8 @@ function renderSubmission(submission) {
   }
 
   card.innerHTML = `
-    <div class="stamp stamp-icon">👁️</div>
-    <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : (hasNomination ? 'Employee recognition' : (hasSurveyAnswers && !hasSuggestion ? 'Survey' : 'Idea box'))}</p>
+    <div class="stamp stamp-icon" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+    <div class="tag-row"><span class="tag-chip">${isBoth ? 'Suggestion + nomination' : (hasNomination ? 'Nomination' : (hasSurveyAnswers && !hasSuggestion ? 'Survey' : 'Suggestion'))}</span></div>
     <h1>Your submission</h1>
     <p class="subtitle">${who} · ${when}</p>
 

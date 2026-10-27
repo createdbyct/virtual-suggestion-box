@@ -185,6 +185,7 @@ class QuestionAnalytics(BaseModel):
     response_count: int
     option_counts: Optional[dict] = None  # multiple_choice / yes_no — option text -> count
     average_rating: Optional[float] = None  # rating questions only
+    rating_counts: Optional[dict[str, int]] = None  # rating questions only: how many gave each 1-5
     text_answers: Optional[List[str]] = None  # short_text questions only — raw answers
 
 

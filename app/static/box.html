@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/theme.js"></script>
+<script src="/static/analytics-view.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
@@ -51,11 +52,15 @@ async function loadForm() {
 }
 
 function renderExpiredForm(form) {
+  const closed = new Date(form.expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   card.innerHTML = `
-    <p class="eyebrow">Closed</p>
+    <div class="stamp stamp-closed" aria-hidden="true">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>
+    </div>
+    <p class="eyebrow">Closed ${closed}</p>
     <h1>${escapeHtml(form.title)}</h1>
-    <p class="subtitle">This form is no longer accepting submissions.</p>
-    ${form.public_analytics ? `<a href="/results/${slug}" class="link-btn" style="width:100%; justify-content:center; margin-top:14px;">📊 View results</a>` : ''}
+    <p class="subtitle">This form is no longer accepting responses.</p>
+    ${form.public_analytics ? `<a href="/results/${slug}" class="cta-link">See results</a>` : ''}
   `;
 }
 
@@ -64,10 +69,8 @@ async function showResultsPopup(form) {
   overlay.id = 'results-popup-overlay';
   overlay.className = 'qr-modal-overlay';
   overlay.innerHTML = `
-    <div class="qr-modal" style="max-width:480px; text-align:left;">
+    <div class="qr-modal results-modal" role="dialog" aria-label="Results">
       <button type="button" class="qr-modal-close" id="results-popup-close" aria-label="Close">×</button>
-      <p class="eyebrow">Results</p>
-      <h1 style="font-size:1.25rem; margin-bottom:14px;">${escapeHtml(form.title)}</h1>
       <div id="results-popup-body"><p class="subtitle">Loading…</p></div>
     </div>
   `;
@@ -82,47 +85,13 @@ async function showResultsPopup(form) {
     return;
   }
   const data = await res.json();
-  body.innerHTML = renderAnalyticsSummary(data);
-}
-
-function renderAnalyticsSummary(data) {
-  if (data.questions.length === 0) {
-    return `<p class="hint">No questions on this form.</p>`;
-  }
-  return `<p class="subtitle" style="margin-bottom:14px;">${data.total_submissions} total submission${data.total_submissions === 1 ? '' : 's'}</p>` +
-    data.questions.map(q => {
-      let body = '';
-      if (q.option_counts && Object.keys(q.option_counts).length > 0) {
-        const max = Math.max(...Object.values(q.option_counts));
-        body = Object.entries(q.option_counts).map(([option, count]) => {
-          const pct = q.response_count > 0 ? Math.round((count / q.response_count) * 100) : 0;
-          const barWidth = max > 0 ? Math.round((count / max) * 100) : 0;
-          return `
-            <div style="margin-bottom:8px;">
-              <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:3px;">
-                <span>${escapeHtml(option)}</span>
-                <span class="hint">${count} (${pct}%)</span>
-              </div>
-              <div style="background:var(--accent-soft); border-radius:4px; height:8px; overflow:hidden;">
-                <div style="background:var(--accent); height:100%; width:${barWidth}%;"></div>
-              </div>
-            </div>
-          `;
-        }).join('');
-      } else if (q.average_rating !== null && q.average_rating !== undefined) {
-        body = `<div style="font-size:1.2rem; font-weight:600;">${q.average_rating.toFixed(1)} <span class="hint" style="font-size:0.8rem; font-weight:400;">avg / 5</span></div>`;
-      } else if (q.text_answers && q.text_answers.length > 0) {
-        body = q.text_answers.slice(0, 5).map(a => `<div class="submission-row" style="margin-bottom:6px; font-size:0.85rem;">${escapeHtml(a)}</div>`).join('');
-      } else {
-        body = `<p class="hint">No responses yet.</p>`;
-      }
-      return `
-        <div style="margin-bottom:16px;">
-          <div style="font-weight:600; font-size:0.9rem; margin-bottom:8px;">${escapeHtml(q.question_text)}</div>
-          ${body}
-        </div>
-      `;
-    }).join('');
+  body.innerHTML = `
+    <p class="eyebrow">Final results</p>
+    <h1 style="font-size:1.4rem; margin-bottom:14px;">${data.total_submissions} ${data.total_submissions === 1 ? 'person' : 'people'} responded</h1>
+    ${renderAnalyticsCards(data, 'No questions on this form.')}
+    <a href="/results/${slug}" class="cta-link" style="margin-top:16px;">See full results</a>
+  `;
+  bindAnalyticsCards(body);
 }
 
 function renderForm(form) {
@@ -355,15 +324,17 @@ function showError(msg) {
 function renderConfirmation(data, publicAnalytics) {
   const editUrl = `${window.location.origin}${data.edit_url}`;
   card.innerHTML = `
-    <div class="confirmation">
-      <div class="stamp-mark">✓</div>
-      <h1>Thanks — got it.</h1>
-      <p class="subtitle">Your submission has been received.</p>
-      <div class="edit-link-box">
-        <a href="${editUrl}" class="link-btn" style="width:100%; justify-content:center;">View your submission</a>
-      </div>
-      ${publicAnalytics ? `<a href="/results/${slug}" class="link-btn" style="width:100%; justify-content:center; margin-top:10px;">📊 View results</a>` : ''}
+    <div class="stamp stamp-icon" aria-hidden="true">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
     </div>
+    <div class="tag-row"><span class="tag-chip">Submission received</span></div>
+    <h1>Thank you</h1>
+    <p class="subtitle">Your response was sent. You can look at it again with the link below.</p>
+    <div class="cta-stack">
+      <a href="${editUrl}" class="cta-link">View my submission</a>
+      ${publicAnalytics ? `<a href="/results/${slug}" class="cta-link cta-outline">See survey results</a>` : ''}
+    </div>
+    <p class="timestamp">Your submission link works for 24 hours and is view-only.</p>
   `;
 }
 

@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/theme.js"></script>
+<script src="/static/analytics-view.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
@@ -853,52 +854,18 @@ async function renderAnalyticsView(projectId, isAdmin) {
   const res = await fetch(endpoint);
   const data = res.ok ? await res.json() : { total_submissions: 0, questions: [] };
 
-  const typeLabels = { multiple_choice: 'Multiple choice', rating: 'Rating', short_text: 'Short text', yes_no: 'Yes / No' };
-
-  const questionsHtml = data.questions.length === 0
-    ? `<div class="empty-state">This form has no questions yet — add some from Edit → Questions.</div>`
-    : data.questions.map(q => {
-        let body = '';
-        if (q.option_counts && Object.keys(q.option_counts).length > 0) {
-          const max = Math.max(...Object.values(q.option_counts));
-          body = Object.entries(q.option_counts).map(([option, count]) => {
-            const pct = q.response_count > 0 ? Math.round((count / q.response_count) * 100) : 0;
-            const barWidth = max > 0 ? Math.round((count / max) * 100) : 0;
-            return `
-              <div style="margin-bottom:10px;">
-                <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-                  <span>${escapeHtml(option)}</span>
-                  <span class="hint">${count} (${pct}%)</span>
-                </div>
-                <div style="background:var(--accent-soft); border-radius:4px; height:10px; overflow:hidden;">
-                  <div style="background:var(--accent); height:100%; width:${barWidth}%;"></div>
-                </div>
-              </div>
-            `;
-          }).join('');
-        } else if (q.average_rating !== null && q.average_rating !== undefined) {
-          body = `<div style="font-size:1.4rem; font-weight:600;">${q.average_rating.toFixed(1)} <span class="hint" style="font-size:0.85rem; font-weight:400;">average, out of 5</span></div>`;
-        } else if (q.text_answers && q.text_answers.length > 0) {
-          body = q.text_answers.map(a => `<div class="submission-row" style="margin-bottom:8px; font-size:0.9rem;">${escapeHtml(a)}</div>`).join('');
-        } else {
-          body = `<p class="hint">No responses yet.</p>`;
-        }
-
-        return `
-          <div class="project-row" style="margin-bottom:14px;">
-            <div class="project-row-title" style="margin-bottom:10px;">${escapeHtml(q.question_text)} <span class="badge">${typeLabels[q.question_type]}</span> <span class="hint">${q.response_count} response${q.response_count === 1 ? '' : 's'}</span></div>
-            ${body}
-          </div>
-        `;
-      }).join('');
+  const questionsHtml = renderAnalyticsCards(data, 'This form has no questions yet — add some from Edit → Questions.');
 
   card.innerHTML = `
     ${renderTopBar()}
     <a class="back-link" id="back-link">&larr; Back to submissions</a>
-    <h1>${escapeHtml(project.title)} — Analytics</h1>
-    <p class="subtitle">${data.total_submissions} total submission${data.total_submissions === 1 ? '' : 's'}</p>
+    <div class="page-title-block">
+      <p class="eyebrow">Analytics · ${data.total_submissions} response${data.total_submissions === 1 ? '' : 's'}</p>
+      <h1>${escapeHtml(project.title)}</h1>
+    </div>
     ${questionsHtml}
   `;
+  bindAnalyticsCards(card);
 
   document.getElementById('back-link').addEventListener('click', () => {
     if (isAdmin) renderAdminSubmissionsView(projectId);
@@ -928,14 +895,19 @@ async function renderSubmissionsPage(projectId) {
   card.innerHTML = `
     ${renderTopBar()}
     <a class="back-link" id="back-link">&larr; Back to your forms</a>
-    <h1>${escapeHtml(project.title)} ${typeBadges(project.type)} ${ownershipBadge}</h1>
-    <p class="subtitle" style="font-family:'IBM Plex Mono',monospace; font-size:0.82rem;">${url}</p>
-
-    <p class="section-title" id="submissions-count-label">Submissions</p>
+    <div class="page-title-row">
+      <div class="page-title-block">
+        <p class="eyebrow" id="submissions-count-label">Submissions</p>
+        <h1>${escapeHtml(project.title)}</h1>
+        <p class="meta-line">${typeBadges(project.type)} ${ownershipBadge} <span>${url.replace(/^https?:\/\//, '')}</span></p>
+      </div>
+      <div class="page-title-actions">
+        <button class="link-btn view-submissions-btn" id="analytics-btn">Analytics</button>
+        <button class="link-btn" id="export-btn">Export CSV</button>
+      </div>
+    </div>
     <div class="status-filter-pills" id="status-filter-pills"></div>
-    <input type="text" id="submission-search" placeholder="Search submissions…" value="${escapeAttr(currentSubmissionSearch)}" style="margin-bottom:16px;">
-    <button class="link-btn" id="export-btn" style="margin-bottom:16px;">Export CSV</button>
-    <button class="link-btn" id="analytics-btn" style="margin-bottom:16px;">📊 View analytics</button>
+    <input type="search" id="submission-search" placeholder="Search submissions…" value="${escapeAttr(currentSubmissionSearch)}" style="margin-bottom:16px;">
     <div class="bulk-actions-bar" id="bulk-actions-bar"></div>
     <div class="submission-list" id="submission-list"></div>
     <div id="pagination-controls" style="display:flex; justify-content:space-between; align-items:center; margin-top:14px;"></div>
@@ -1020,37 +992,47 @@ async function renderEditPage(projectId, editTab) {
       <label for="edit-title">Title</label>
       <input type="text" id="edit-title" value="${escapeAttr(project.title)}" required>
 
-      <label for="edit-type">Type</label>
-      <select id="edit-type">
-        <option value="both" ${project.type === 'both' ? 'selected' : ''}>Suggestions + Nominations</option>
-        <option value="suggestion" ${project.type === 'suggestion' ? 'selected' : ''}>Suggestions only</option>
-        <option value="nomination" ${project.type === 'nomination' ? 'selected' : ''}>Nominations only</option>
-        <option value="survey" ${project.type === 'survey' ? 'selected' : ''}>Survey only</option>
-      </select>
-
       <label for="edit-description">Description <span class="hint">(optional)</span></label>
-      <textarea id="edit-description" rows="2" placeholder="Shown to whoever opens the form — leave blank for a generic default">${escapeHtml(project.description || '')}</textarea>
+      <textarea id="edit-description" rows="3" placeholder="Shown to whoever opens the form — leave blank for a generic default">${escapeHtml(project.description || '')}</textarea>
 
-      <div class="checkbox-row" style="margin-top:18px;">
-        <input type="checkbox" id="edit-public-analytics" ${project.public_analytics ? 'checked' : ''}>
-        <label for="edit-public-analytics">Make analytics public</label>
+      <div class="field-row">
+        <div class="field-col">
+          <label for="edit-type">Collects</label>
+          <select id="edit-type">
+            <option value="both" ${project.type === 'both' ? 'selected' : ''}>Suggestions + Nominations</option>
+            <option value="suggestion" ${project.type === 'suggestion' ? 'selected' : ''}>Suggestions only</option>
+            <option value="nomination" ${project.type === 'nomination' ? 'selected' : ''}>Nominations only</option>
+            <option value="survey" ${project.type === 'survey' ? 'selected' : ''}>Survey only</option>
+          </select>
+        </div>
+        <div class="field-col">
+          <label for="edit-expires">Stops accepting on <span class="hint">(optional)</span></label>
+          <input type="datetime-local" id="edit-expires" value="${toDatetimeLocal(project.expires_at)}">
+        </div>
       </div>
-      <p class="hint" style="display:block; margin-top:6px;">Anyone with the link can view results (response counts, averages, etc.) — no login required. Individual submissions are never shown this way.</p>
 
-      <label for="edit-group" style="margin-top:18px; display:block;">Group <span class="hint">(optional)</span></label>
-      <input type="text" id="edit-group" value="${escapeAttr(project.group_name || '')}" placeholder="e.g. HR Forms, Q4 2026">
-
-      <label for="edit-expires">Expires <span class="hint">(optional — stops accepting submissions after this time)</span></label>
-      <input type="datetime-local" id="edit-expires" value="${toDatetimeLocal(project.expires_at)}">
-
-      <div class="checkbox-row" style="margin-top:18px;">
-        <input type="checkbox" id="edit-is-template" ${project.is_template ? 'checked' : ''}>
-        <label for="edit-is-template">Use as a starting template</label>
+      <div class="field-row">
+        <div class="field-col">
+          <label for="edit-group">Group <span class="hint">(optional)</span></label>
+          <input type="text" id="edit-group" value="${escapeAttr(project.group_name || '')}" placeholder="e.g. HR Forms, Q4 2026">
+        </div>
+        <div class="field-col field-checks">
+          <div class="checkbox-row">
+            <input type="checkbox" id="edit-public-analytics" ${project.public_analytics ? 'checked' : ''}>
+            <label for="edit-public-analytics">Let respondents see results</label>
+          </div>
+          <div class="checkbox-row">
+            <input type="checkbox" id="edit-is-template" ${project.is_template ? 'checked' : ''}>
+            <label for="edit-is-template">Save as a template</label>
+          </div>
+        </div>
       </div>
-      <p class="hint" style="display:block; margin-top:6px;">Shows up under "start from a template" when creating a new form. Copying a template always makes a fresh, non-template form.</p>
 
       <p class="error-msg" id="edit-error"></p>
-      <button type="submit" id="edit-save-btn">Save changes</button>
+      <div class="form-actions">
+        <button type="submit" id="edit-save-btn">Save changes</button>
+        <button type="button" class="link-btn" id="edit-cancel-btn">Cancel</button>
+      </div>
     </form>
   `;
 
@@ -1110,6 +1092,8 @@ async function renderEditPage(projectId, editTab) {
   `;
 
   document.getElementById('back-link').addEventListener('click', renderMyFormsView);
+  const cancelBtn = document.getElementById('edit-cancel-btn');
+  if (cancelBtn) cancelBtn.addEventListener('click', renderMyFormsView);
   document.querySelectorAll('.copy-link-btn').forEach(btn => btn.addEventListener('click', copyLinkHandler));
   document.querySelectorAll('.qr-link-btn').forEach(btn => {
     btn.addEventListener('click', () => showQrModal(btn.dataset.url, btn.dataset.title));
@@ -1408,7 +1392,7 @@ async function loadAndRenderSubmissions(projectId) {
   const data = res.ok ? await res.json() : { submissions: [], total: 0 };
 
   selectedSubmissionIds.clear();
-  document.getElementById('submissions-count-label').textContent = `Submissions (${data.total})`;
+  document.getElementById('submissions-count-label').textContent = `Submissions · ${data.total} total`;
   renderSubmissionList(data.submissions, projectId, project.is_owner);
   renderBulkActionsBar(projectId, project.is_owner);
   renderPaginationControls(data.total, projectId);
@@ -1829,39 +1813,50 @@ function renderSubmissionList(submissions, projectId = null, isOwner = false) {
     const who = s.is_anonymous
       ? 'Anonymous'
       : escapeHtml(s.submitter_name || 'Unknown') + (s.submitter_email ? ` · ${escapeHtml(s.submitter_email)}` : '');
-    const when = new Date(s.created_at).toLocaleString();
+    const when = new Date(s.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+    const hasNominees = s.nominees && s.nominees.length > 0;
+    const nomineeNames = hasNominees ? s.nominees.map(n => `${escapeHtml(n.name)}${n.role ? ', ' + escapeHtml(n.role) : ''}`).join(' · ') : '';
+    const title = hasNominees
+      ? `Nominee: ${nomineeNames}`
+      : (s.suggestion_text ? 'Suggestion' : 'Survey response');
 
     let body = '';
-    if (s.suggestion_text) {
-      body += `<div class="field-label">Suggestion</div><div>${renderTruncatable(s.suggestion_text)}</div>`;
+    if (hasNominees && s.suggestion_text) {
+      body += `<div class="field-label">Suggestion</div><p class="sub-text">${renderTruncatable(s.suggestion_text)}</p>`;
+    } else if (s.suggestion_text) {
+      body += `<p class="sub-text">${renderTruncatable(s.suggestion_text)}</p>`;
     }
-    if (s.nominees && s.nominees.length > 0) {
-      const chips = s.nominees.map(n => `<span class="nominee-chip">${escapeHtml(n.name)}${n.role ? ' · ' + escapeHtml(n.role) : ''}</span>`).join('');
-      body += `<div class="field-label">Nominees</div><div>${chips}</div>`;
-      if (s.nomination_reason) {
-        body += `<div class="field-label">Reason</div><div>${renderTruncatable(s.nomination_reason)}</div>`;
-      }
+    if (hasNominees && s.nomination_reason) {
+      body += `<p class="sub-text">${renderTruncatable(s.nomination_reason)}</p>`;
     }
     if (s.survey_answers && s.survey_answers.length > 0) {
-      body += s.survey_answers.map(a => `<div class="field-label">${escapeHtml(a.question_text)}</div><div>${renderTruncatable(a.answer_text)}</div>`).join('');
+      const short = s.survey_answers.filter(a => (a.answer_text || '').length <= 40);
+      const long = s.survey_answers.filter(a => (a.answer_text || '').length > 40);
+      body += `<div class="sub-survey">
+        ${short.map(a => `<span>${escapeHtml(a.question_text)} <strong>${escapeHtml(a.answer_text)}</strong></span>`).join('')}
+        ${long.map(a => `<div class="sub-survey-long"><span class="field-label">${escapeHtml(a.question_text)}</span><div>${renderTruncatable(a.answer_text)}</div></div>`).join('')}
+      </div>`;
     }
 
+    const nextStatus = { new: ['reviewed', 'Mark reviewed'], reviewed: ['done', 'Mark done'], done: ['new', 'Reopen'] }[s.status] || ['reviewed', 'Mark reviewed'];
     const controls = projectId ? `
-      <div style="display:flex; gap:8px; align-items:center; margin-top:10px;">
-        <select class="status-select" data-id="${s.id}" style="padding:6px 8px; font-size:0.8rem; width:auto;">
-          ${Object.entries(statusLabels).map(([val, label]) => `<option value="${val}" ${s.status === val ? 'selected' : ''}>${label}</option>`).join('')}
-        </select>
-        ${isOwner ? `<button type="button" class="link-btn delete-submission-btn" data-id="${s.id}" style="font-size:0.8rem; padding:6px 12px;">Delete</button>` : ''}
+      <div class="sub-actions">
+        <button type="button" class="${s.status === 'new' ? 'primary-btn' : 'link-btn'} status-advance-btn" data-id="${s.id}" data-next="${nextStatus[0]}">${nextStatus[1]}</button>
+        ${isOwner ? `<button type="button" class="link-btn delete-submission-btn" data-id="${s.id}">Delete</button>` : ''}
       </div>
     ` : '';
 
     const checkbox = projectId
-      ? `<input type="checkbox" class="submission-checkbox" data-id="${s.id}" style="margin-right:10px; width:16px; height:16px; accent-color: var(--accent); vertical-align:middle;">`
+      ? `<input type="checkbox" class="submission-checkbox" data-id="${s.id}" aria-label="Select submission">`
       : '';
 
     return `
       <div class="submission-row status-${s.status}">
-        <div class="who-line">${checkbox}${who} · ${when} <span class="badge status-badge-${s.status}" style="margin-left:6px;">${statusLabels[s.status] || s.status}</span></div>
+        <div class="sub-head">
+          <div class="sub-title">${checkbox}<span class="sub-name">${title}</span> <span class="badge status-badge-${s.status}">${statusLabels[s.status] || s.status}</span></div>
+          <span class="sub-meta">${when} · ${who}</span>
+        </div>
         ${body}
         ${controls}
       </div>
@@ -1879,8 +1874,8 @@ function renderSubmissionList(submissions, projectId = null, isOwner = false) {
   });
 
   if (projectId) {
-    list.querySelectorAll('.status-select').forEach(sel => {
-      sel.addEventListener('change', () => handleStatusChange(projectId, parseInt(sel.dataset.id), sel.value));
+    list.querySelectorAll('.status-advance-btn').forEach(btn => {
+      btn.addEventListener('click', () => handleStatusChange(projectId, parseInt(btn.dataset.id), btn.dataset.next));
     });
     list.querySelectorAll('.delete-submission-btn').forEach(btn => {
       btn.addEventListener('click', () => handleDeleteSubmission(projectId, parseInt(btn.dataset.id)));
