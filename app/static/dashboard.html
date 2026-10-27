@@ -49,7 +49,7 @@ function showQrModal(url, title) {
   overlay.className = 'qr-modal-overlay';
   overlay.innerHTML = `
     <div class="qr-modal">
-      <button type="button" class="qr-modal-close" id="qr-modal-close" aria-label="Close">×</button>
+      <button type="button" class="qr-modal-close" id="qr-modal-close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <p class="eyebrow" style="text-align:center;">QR code</p>
       <h1 style="text-align:center; font-size:1.15rem;">${escapeHtml(title || 'Form link')}</h1>
       <div id="qr-modal-code" style="display:flex; justify-content:center; margin:18px 0; background:#fff; padding:16px; border-radius:8px;"></div>
@@ -632,7 +632,7 @@ function showNewFormModal() {
   overlay.className = 'qr-modal-overlay';
   overlay.innerHTML = `
     <div class="qr-modal" style="max-width:440px; text-align:left;">
-      <button type="button" class="qr-modal-close" id="new-form-modal-close" aria-label="Close">×</button>
+      <button type="button" class="qr-modal-close" id="new-form-modal-close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <p class="eyebrow">New form</p>
       <h1 style="font-size:1.25rem; margin-bottom:18px;">Create a form</h1>
 
@@ -1181,7 +1181,7 @@ function showQuestionModal(projectId, existingQuestion) {
   overlay.className = 'qr-modal-overlay';
   overlay.innerHTML = `
     <div class="qr-modal" style="max-width:440px; text-align:left;">
-      <button type="button" class="qr-modal-close" id="question-modal-close" aria-label="Close">×</button>
+      <button type="button" class="qr-modal-close" id="question-modal-close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <p class="eyebrow">${isEdit ? 'Edit question' : 'New question'}</p>
       <h1 style="font-size:1.25rem; margin-bottom:18px;">${isEdit ? 'Edit question' : 'Add a question'}</h1>
 
@@ -1314,7 +1314,7 @@ async function showTemplateModal(projectId) {
   overlay.className = 'qr-modal-overlay';
   overlay.innerHTML = `
     <div class="qr-modal" style="max-width:460px; text-align:left;">
-      <button type="button" class="qr-modal-close" id="template-modal-close" aria-label="Close">×</button>
+      <button type="button" class="qr-modal-close" id="template-modal-close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <p class="eyebrow">Templates</p>
       <h1 style="font-size:1.25rem; margin-bottom:18px;">Use a template</h1>
       <p class="hint" style="display:block; margin-bottom:16px;">Adds these questions after whatever's already on this form — doesn't replace anything.</p>
@@ -1724,17 +1724,33 @@ async function renderUserFormsView(userId, userName) {
     const needsReviewBadge = p.new_submission_count > 0
       ? ` <span class="badge status-badge-new">${p.new_submission_count} need${p.new_submission_count === 1 ? 's' : ''} review</span>`
       : '';
+    const tilt = [-6, 5, -3, 7][p.id % 4];
+    const n = p.new_submission_count || 0;
+    const reviewPill = n > 0
+      ? `<span class="badge status-badge-new review-pill">${n} need${n === 1 ? 's' : ''} review</span>`
+      : (p.submission_count > 0 ? `<span class="badge status-badge-done review-pill">All reviewed</span>` : '');
+    const groupBadge = p.group_name ? ` <span class="badge badge-muted">${escapeHtml(p.group_name)}</span>` : '';
     return `
-      <div class="project-row">
-        <div class="project-row-top">
-          <div>
-            <div class="project-row-title">${escapeHtml(p.title)} ${typeBadges(p.type)}${archivedBadge}</div>
-            <div class="project-row-meta">${url} · <strong>${p.submission_count}</strong> submission${p.submission_count === 1 ? '' : 's'}${needsReviewBadge}</div>
+      <div class="project-row ${p.is_archived ? 'is-archived' : ''}">
+        <div class="project-row-main">
+          <div class="row-stamp" style="transform:rotate(${tilt}deg)">${stampSvg(p.type)}</div>
+          <div class="row-info">
+            <div class="project-row-title">${escapeHtml(p.title)} ${typeBadges(p.type)}${groupBadge}${archivedBadge}</div>
+            <div class="project-row-meta">${url.replace(/^https?:\/\//, '')}</div>
           </div>
-          <div class="project-row-actions">
-            <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
-            <button class="link-btn view-admin-submissions-btn" data-id="${p.id}">View submissions</button>
+          <div class="row-counts">
+            ${reviewPill}
+            <span class="row-total"><strong>${p.submission_count}</strong> total</span>
           </div>
+        </div>
+        <div class="project-row-actions">
+          <button class="link-btn view-admin-submissions-btn" data-id="${p.id}">Submissions</button>
+          <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
+          <span class="notify-group" aria-label="Notify me about this form">
+            <span class="notify-label">Notify me</span>
+            <label class="notify-opt"><input type="checkbox" class="watch-checkbox" data-id="${p.id}" data-channel="email" ${p.notify_email ? 'checked' : ''}> Email</label>
+            <label class="notify-opt"><input type="checkbox" class="watch-checkbox" data-id="${p.id}" data-channel="webhook" ${p.notify_webhook ? 'checked' : ''}> Webhook</label>
+          </span>
         </div>
       </div>
     `;
@@ -1761,6 +1777,7 @@ async function renderUserFormsView(userId, userName) {
     `).join('');
   }
 
+  bindWatchCheckboxes(list);
   list.querySelectorAll('.view-admin-submissions-btn').forEach(btn => {
     btn.addEventListener('click', () => renderAdminSubmissionsView(parseInt(btn.dataset.id)));
   });
@@ -2113,9 +2130,6 @@ async function renderSiteSettingsView(settingsTab) {
     smtp_host: '', smtp_port: null, smtp_username: '', smtp_from_email: '', smtp_from_name: '', smtp_password_set: false,
   };
 
-  const projectsRes = await fetch('/api/admin/projects');
-  const allFormsForWatch = projectsRes.ok ? await projectsRes.json() : [];
-
   const lastBackupText = settings.last_backup_at
     ? `Last backup: ${new Date(settings.last_backup_at).toLocaleString()}`
     : 'No backups yet — export one now, or set up the scheduled script (see install.md).';
@@ -2197,9 +2211,7 @@ async function renderSiteSettingsView(settingsTab) {
       <button type="submit" id="notification-settings-save-btn" style="margin-top:24px;">Save settings</button>
     </form>
 
-    <p class="section-title" style="margin-top:20px;">Forms to notify me about</p>
-    <p class="hint" style="display:block; margin-bottom:12px;">Only applies once a webhook URL or notification email is saved above.</p>
-    <div class="project-list" id="watch-list"></div>
+    <p class="hint" style="display:block; margin-top:20px;">To choose which forms notify you, open Users → View forms and use the "Notify me" checkboxes on each form. These only apply once a webhook URL or notification email is saved above.</p>
   `;
 
   const backupsTabHtml = `
@@ -2239,7 +2251,6 @@ async function renderSiteSettingsView(settingsTab) {
     document.getElementById('general-settings-form').addEventListener('submit', handleSaveGeneralSettings);
   } else if (settingsTab === 'notifications') {
     document.getElementById('notification-settings-form').addEventListener('submit', handleSaveNotificationSettings);
-    renderWatchList(allFormsForWatch);
   } else if (settingsTab === 'backups') {
     document.getElementById('export-backup-btn').addEventListener('click', () => {
       window.location.href = '/api/admin/export';
@@ -2248,34 +2259,7 @@ async function renderSiteSettingsView(settingsTab) {
   }
 }
 
-function renderWatchList(forms) {
-  const list = document.getElementById('watch-list');
-  if (forms.length === 0) {
-    list.innerHTML = `<div class="empty-state">No forms exist yet.</div>`;
-    return;
-  }
-
-  list.innerHTML = forms.map(p => `
-    <div class="project-row">
-      <div class="project-row-top">
-        <div>
-          <div style="font-weight:600;">${escapeHtml(p.title)}</div>
-          <span class="hint">${escapeHtml(p.owner_email)}</span>
-        </div>
-        <div style="display:flex; gap:16px;">
-          <div class="checkbox-row" style="margin:0;">
-            <input type="checkbox" class="watch-checkbox" data-id="${p.id}" data-channel="email" ${p.notify_email ? 'checked' : ''}>
-            <label style="margin:0;">Email</label>
-          </div>
-          <div class="checkbox-row" style="margin:0;">
-            <input type="checkbox" class="watch-checkbox" data-id="${p.id}" data-channel="webhook" ${p.notify_webhook ? 'checked' : ''}>
-            <label style="margin:0;">Webhook</label>
-          </div>
-        </div>
-      </div>
-    </div>
-  `).join('');
-
+function bindWatchCheckboxes(list) {
   list.querySelectorAll('.watch-checkbox').forEach(cb => {
     cb.addEventListener('change', async () => {
       const formId = cb.dataset.id;
@@ -2439,7 +2423,7 @@ function showEditOrgModal(userId, currentOrg, currentDept) {
   overlay.className = 'qr-modal-overlay';
   overlay.innerHTML = `
     <div class="qr-modal" style="max-width:400px; text-align:left;">
-      <button type="button" class="qr-modal-close" id="edit-org-modal-close" aria-label="Close">×</button>
+      <button type="button" class="qr-modal-close" id="edit-org-modal-close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <p class="eyebrow">Edit user</p>
       <h1 style="font-size:1.25rem; margin-bottom:18px;">Organization &amp; department</h1>
 

@@ -1455,10 +1455,35 @@ a.cta-link.cta-outline { background:var(--card); color:var(--accent); }
 .page-head-row > div:first-child { flex: 1 1 260px; min-width: 0; }
 .page-head-row .page-title-actions { align-self: flex-start; }
 .section-title { font-size: 1.15rem; margin: 28px 0 12px; padding-top: 0; }
-.panel { background: var(--card); border-radius: 6px; border-top: 2px dashed var(--border-strong); box-shadow: 0 1px 0 var(--border); padding: 22px 26px 26px; }
-@media (max-width: 600px) { .panel { padding: 18px 16px 22px; } }
 .card.card-flat .page-head { margin-top: 24px; }
-.panel > .subtitle:first-child { margin-top: 0; }
 /* Everything except the brand lives in a white box */
 .dash-chrome .dash-head { background: var(--card); border-radius: 6px; border-top: 2px dashed var(--border-strong); box-shadow: 0 1px 0 var(--border); padding: 12px 16px; margin-bottom: 16px; }
 .card.card-wide { padding-top: 32px; }
+
+/* Close / remove (X) buttons: true circles, crisp icon */
+.qr-modal-close { width:44px; height:44px; min-width:44px; flex:none; aspect-ratio:1; padding:0; margin:0; border-radius:50%; top:12px; right:12px; color:var(--ink); border:1.5px solid var(--border-strong); }
+.qr-modal-close svg { display:block; }
+.remove-nominee { width:44px; height:44px; min-width:44px; padding:0; border-radius:50%; align-self:center; display:flex; align-items:center; justify-content:center; border:1.5px solid var(--border-strong); color:var(--ink); background:var(--card); }
+.remove-nominee svg { display:block; }
+.remove-nominee:hover { background:var(--accent-soft); }
+
+/* Public form spacing */
+#submit-form > .panel:first-child, #submit-form > .panel:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+#submit-form .panel { display:flex; flex-direction:column; gap:8px; }
+#submit-form .panel label { margin: 6px 0 0; }
+#submit-form .panel .hint { font-weight: 400; }
+#submit-form .panel.hidden { display:none; }
+#submit-form .nominees-list { margin: 0; gap: 12px; }
+#submit-form .nominee-row { grid-template-columns: 1fr 1fr 44px; padding: 14px; gap: 10px; }
+#submit-form .add-nominee-btn { align-self:flex-start; margin: 0 0 8px; min-height:44px; }
+#submit-form .optional-fields { margin-top: 16px; padding-top: 14px; display:flex; flex-direction:column; gap:8px; }
+#submit-form .optional-fields.hidden { display:none; }
+#submit-form #show-identity-btn { margin-top: 16px; }
+#submit-form textarea { min-height: 120px; }
+#submit-form #submit-btn { margin-top: 22px; }
+@media (max-width: 600px) { #submit-form .nominee-row { grid-template-columns: 1fr 44px; } #submit-form .nominee-row .nominee-name { grid-column: 1 / 2; } #submit-form .nominee-row .nominee-role { grid-column: 1 / 2; } #submit-form .remove-nominee { grid-column: 2; grid-row: 2 / 4; } }
+
+.notify-group { display:inline-flex; align-items:center; gap:14px; flex-wrap:wrap; margin-left:auto; padding:0 4px; min-height:44px; }
+.notify-label { font-family:'IBM Plex Mono',monospace; font-size:0.68rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+.notify-opt { display:inline-flex; align-items:center; gap:8px; margin:0; font-size:0.88rem; font-weight:500; cursor:pointer; min-height:44px; }
+.notify-opt input { width:20px; height:20px; margin:0; accent-color:var(--accent); }
