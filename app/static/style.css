@@ -1,40 +1,58 @@
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 :root {
-  --bg: #ECEAE2;
-  --card: #FFFEFB;
-  --ink: #1E1E1C;
-  --muted: #6F6A5E;
-  --border: #D9D4C4;
+  --bg: #F1EBDC;
+  --card: #FFFDF7;
+  --ink: #1F2A24;
+  --muted: #4F5A52;
+  --border: #D6CCB3;
+  --border-strong: #B9AE92;
+  --input-bg: #FFFFFF;
+  --dot: #D9D0BB;
+  --new-bg: #FBEBC8;
+  --new-ink: #6B4600;
+  --new-border: #C9A24A;
+  --rev-bg: #E1ECFA;
+  --rev-ink: #1D4F91;
+  --rev-border: #8FB0DD;
 
   /* suggestion forms: pine. nomination forms: gold. set per-page via data-kind. */
-  --accent: #2F5D50;
-  --accent-soft: #E4EBE7;
+  --accent: #1F5C45;
+  --accent-soft: #E3EFE8;
   --error: #A63D2F;
 
   --dot-opacity: 0.06;
   --radius: 4px;
-  --on-accent: #FFFEFB;
+  --on-accent: #FFFFFF;
 }
 
 [data-theme="dark"] {
-  --bg: #181815;
-  --card: #232320;
-  --ink: #EDEAE0;
-  --muted: #9C9686;
-  --border: #3A382F;
+  --bg: #151A17;
+  --card: #1E2622;
+  --ink: #ECE8DA;
+  --muted: #A9B3AA;
+  --border: #36433B;
+  --border-strong: #4A5A50;
+  --input-bg: #141A17;
+  --dot: #26302A;
+  --new-bg: #3A2E12;
+  --new-ink: #F2D184;
+  --new-border: #E3B84F;
+  --rev-bg: #17283F;
+  --rev-ink: #9CC2FF;
+  --rev-border: #4F7DB8;
 
-  --accent: #63AD8F;
-  --accent-soft: #1E2E28;
-  --error: #E28A73;
+  --accent: #6FCF9F;
+  --accent-soft: #183324;
+  --error: #FF9C84;
 
   --dot-opacity: 0.08;
-  --on-accent: #14201B;
+  --on-accent: #0F1A14;
 }
 
 [data-kind="nomination"] {
-  --accent: #B8862E;
-  --accent-soft: #F3EAD6;
+  --accent: #8A5F0F;
+  --accent-soft: #F6ECD3;
 }
 
 [data-theme="dark"][data-kind="nomination"],
@@ -49,7 +67,7 @@ body {
   margin: 0;
   font-family: 'IBM Plex Sans', -apple-system, sans-serif;
   background:
-    radial-gradient(circle, rgba(30,30,28,var(--dot-opacity)) 1px, transparent 1px) 0 0 / 16px 16px,
+    radial-gradient(circle, var(--dot) 1px, transparent 1px) 0 0 / 18px 18px,
     var(--bg);
   color: var(--ink);
   min-height: 100vh;
@@ -64,12 +82,12 @@ body {
   position: fixed;
   top: 20px;
   right: 20px;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   margin: 0;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border-strong);
   background: var(--card);
   color: var(--ink);
   font-size: 1rem;
@@ -177,7 +195,7 @@ body {
   border-radius: var(--radius);
   max-width: 620px;
   width: 100%;
-  padding: 72px 36px 32px;
+  padding: 76px 36px 32px;
   height: fit-content;
   box-shadow: 0 1px 2px rgba(30,30,28,0.04), 0 12px 32px -16px rgba(30,30,28,0.18);
 }
@@ -196,16 +214,16 @@ body {
 .stamp {
   position: absolute;
   top: -14px;
-  right: 8px;
-  width: 78px;
-  height: 78px;
+  right: 16px;
+  width: 76px;
+  height: 76px;
   border-radius: 50%;
   border: 2px solid var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  transform: rotate(-9deg);
+  transform: rotate(8deg);
   background: var(--card);
   color: var(--accent);
   font-family: 'IBM Plex Mono', monospace;
@@ -217,7 +235,7 @@ body {
 }
 
 .stamp.stamp-icon {
-  font-size: 1.8rem;
+  font-size: 1.9rem;
   font-family: inherit;
   letter-spacing: normal;
   line-height: 1;
@@ -237,10 +255,10 @@ body {
   position: absolute;
   top: -14px;
   left: 24px;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  border: 2px solid var(--border);
+  border: 2px solid var(--border-strong);
   background: var(--card);
   color: var(--ink);
   display: flex;
@@ -268,6 +286,9 @@ body {
   text-transform: uppercase;
   margin: 0 0 6px;
 }
+
+.card:has(> .stamp) > h1,
+.card:has(> .stamp) > .eyebrow { padding-right: 78px; }
 
 h1 {
   font-family: 'Fraunces', serif;
@@ -299,14 +320,15 @@ label {
   font-size: 0.8rem;
 }
 
-textarea, input[type="text"], input[type="email"] {
+textarea, input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="datetime-local"], input[type="url"] {
   width: 100%;
+  min-height: 46px;
   padding: 11px 13px;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius);
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-family: inherit;
-  background: var(--card);
+  background: var(--input-bg);
   resize: vertical;
   color: var(--ink);
 }
@@ -355,14 +377,15 @@ textarea { min-height: 110px; }
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 12px 14px;
+  min-height: 46px;
   cursor: pointer;
-  font-size: 0.88rem;
+  font-size: 0.92rem;
   font-weight: 500;
   line-height: 1.35;
-  background: var(--card);
+  background: var(--input-bg);
   transition: border-color 0.15s, background 0.15s;
 }
 
@@ -455,7 +478,8 @@ textarea { min-height: 110px; }
 button {
   width: 100%;
   margin-top: 26px;
-  padding: 13px;
+  padding: 14px;
+  min-height: 48px;
   background: var(--accent);
   color: var(--on-accent);
   border: none;
@@ -467,7 +491,7 @@ button {
 }
 
 button:hover { filter: brightness(0.92); }
-button:disabled { background: #a9a9a9; cursor: not-allowed; filter: none; }
+button:disabled { background: #8C938D; color: #FFFFFF; cursor: not-allowed; filter: none; }
 
 .error-msg {
   color: var(--error);
@@ -837,10 +861,13 @@ body[data-page="home"] {
 .link-btn {
   width: auto;
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border-strong);
   color: var(--ink);
   padding: 8px 14px;
-  font-size: 0.85rem;
+  min-height: 44px;
+  min-width: 76px;
+  justify-content: center;
+  font-size: 0.88rem;
   margin: 0;
   text-decoration: none;
   display: inline-flex;
@@ -871,12 +898,13 @@ body[data-page="home"] {
 
 select {
   width: 100%;
+  min-height: 46px;
   padding: 11px 13px;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius);
   font-size: 0.95rem;
   font-family: inherit;
-  background: var(--card);
+  background: var(--input-bg);
   color: var(--ink);
 }
 
@@ -889,8 +917,9 @@ select {
 .project-row {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 16px 18px;
   background: var(--card);
+  box-shadow: 0 1px 0 var(--border);
 }
 
 .project-row-top {
@@ -900,8 +929,9 @@ select {
 }
 
 .project-row-title {
+  font-family: 'Fraunces', serif;
   font-weight: 600;
-  font-size: 0.98rem;
+  font-size: 1.08rem;
 }
 
 .project-row-meta {
@@ -947,13 +977,15 @@ select {
 
 /* Needs-attention rows get a visible left edge so they stand out even when
    scrolling past a mixed list — done/reviewed stay quiet on purpose. */
-.submission-row.status-new { border-left-color: #C9772E; }
+.submission-row.status-new { border-left-color: var(--new-border); }
+.submission-row.status-reviewed { border-left-color: var(--rev-border); }
+.submission-row.status-done { border-left-color: var(--accent); }
 
 /* Per-row status badges: solid stamp-like fill, always — nothing to
    disambiguate against, they're just informational. */
-.status-badge-new { background: #C9772E; border-color: #C9772E; color: #FFFEFB; }
-.status-badge-reviewed { background: #3B6E91; border-color: #3B6E91; color: #FFFEFB; }
-.status-badge-done { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.status-badge-new { background: var(--new-bg); border-color: var(--new-border); color: var(--new-ink); font-weight: 700; font-size: 0.72rem; padding: 4px 10px; border-width: 1.5px; }
+.status-badge-reviewed { background: var(--rev-bg); border-color: var(--rev-border); color: var(--rev-ink); font-weight: 600; font-size: 0.72rem; padding: 4px 10px; border-width: 1.5px; }
+.status-badge-done { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; font-size: 0.72rem; padding: 4px 10px; border-width: 1.5px; }
 
 .bulk-actions-bar {
   display: flex;
@@ -983,8 +1015,9 @@ select {
 .status-filter-pill {
   width: auto;
   margin: 0;
-  padding: 7px 14px;
-  border: 1px solid var(--border);
+  padding: 8px 16px;
+  min-height: 40px;
+  border: 1.5px solid var(--border-strong);
   border-radius: 999px;
   background: var(--card);
   color: var(--muted);
@@ -1001,11 +1034,11 @@ select {
 .status-filter-pill.pill-all { border-color: var(--ink); color: var(--ink); }
 .status-filter-pill.pill-all.active { background: var(--ink); color: var(--card); }
 
-.status-filter-pill.pill-new { border-color: #C9772E; color: #C9772E; }
-.status-filter-pill.pill-new.active { background: #C9772E; color: #FFFEFB; }
+.status-filter-pill.pill-new { border-color: var(--new-border); background: var(--new-bg); color: var(--new-ink); font-weight: 700; }
+.status-filter-pill.pill-new.active { background: var(--new-ink); border-color: var(--new-ink); color: var(--new-bg); }
 
-.status-filter-pill.pill-reviewed { border-color: #3B6E91; color: #3B6E91; }
-.status-filter-pill.pill-reviewed.active { background: #3B6E91; color: #FFFEFB; }
+.status-filter-pill.pill-reviewed { border-color: var(--rev-border); background: var(--rev-bg); color: var(--rev-ink); }
+.status-filter-pill.pill-reviewed.active { background: var(--rev-ink); border-color: var(--rev-ink); color: var(--rev-bg); }
 
 .status-filter-pill.pill-done { border-color: var(--accent); color: var(--accent); }
 .status-filter-pill.pill-done.active { background: var(--accent); color: var(--on-accent); }
@@ -1060,7 +1093,8 @@ select {
   border: none;
   border-bottom: 2px solid transparent;
   border-radius: 0;
-  padding: 10px 4px 12px;
+  padding: 12px 8px 12px;
+  min-height: 44px;
   color: var(--muted);
   font-weight: 600;
   font-size: 0.9rem;
@@ -1114,3 +1148,54 @@ select {
 }
 
 .back-link:hover { color: var(--accent); }
+
+/* "N need review" on form rows: the number owners care about most */
+.project-row-meta .status-badge-new {
+  font-size: 0.8rem;
+  padding: 5px 12px;
+  margin-left: 6px;
+}
+
+/* tidy tap targets on phones */
+@media (max-width: 480px) {
+  .card:has(> .stamp) > h1,
+  .card:has(> .stamp) > .eyebrow { padding-right: 66px; }
+  .stamp { width: 64px; height: 64px; right: 12px; }
+  .stamp.stamp-icon { font-size: 1.6rem; }
+}
+
+a.link-btn { font-weight: 600; font-family: inherit; color: var(--ink); }
+.link-btn.view-submissions-btn { border-color: var(--accent); color: var(--accent); }
+
+/* segmented answer rows (rating 1-5, yes/no): one row, filled when picked */
+.choice-row {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 16px;
+}
+.choice-row .toggle-option {
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  font-weight: 600;
+}
+.choice-row .toggle-option input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.choice-row .toggle-option:has(input:checked) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.choice-row .toggle-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 
 from app.backup import build_backup_dict
-from app.database import SessionLocal
+from app.database import SessionLocal, init_db
 from app.models import SiteSettings
 
 if __name__ == "__main__":
@@ -36,6 +36,7 @@ if __name__ == "__main__":
     backup_dir = Path(args.dir)
     backup_dir.mkdir(parents=True, exist_ok=True)
 
+    init_db()  # bring an older database up to date first (adds any missing columns in place)
     db = SessionLocal()
     try:
         data = build_backup_dict(db)
@@ -53,7 +54,7 @@ if __name__ == "__main__":
     filepath = backup_dir / filename
     filepath.write_text(json.dumps(data, indent=2))
 
-    print(f"Wrote {filepath} ({len(data['users'])} users, {len(data['projects'])} forms, {len(data['submissions'])} submissions)")
+    print(f"Wrote {filepath} ({len(data['users'])} users, {len(data['projects'])} forms, {len(data['submissions'])} submissions, {len(data['survey_questions'])} survey questions, {len(data['survey_answers'])} survey answers)")
 
     # Prune down to the most recent N backups, oldest first.
     existing = sorted(backup_dir.glob("backup-*.json"), key=lambda p: p.name)

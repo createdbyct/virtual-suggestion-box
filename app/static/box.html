@@ -374,7 +374,7 @@ function renderQuestionField(q) {
   if (q.question_type === 'yes_no') {
     return `
       <label>${escapeHtml(q.question_text)}${requiredMark}</label>
-      <div class="section-toggle" style="margin-bottom:14px;">
+      <div class="choice-row">
         <label class="toggle-option">
           <input type="radio" name="q-${q.id}" value="Yes" data-question-id="${q.id}" class="survey-answer-radio" ${requiredAttr}>
           <span>Yes</span>
@@ -388,14 +388,14 @@ function renderQuestionField(q) {
   }
   if (q.question_type === 'rating') {
     const stars = [1, 2, 3, 4, 5].map(n => `
-      <label class="toggle-option" style="flex:1; justify-content:center; text-align:center;">
+      <label class="toggle-option">
         <input type="radio" name="q-${q.id}" value="${n}" data-question-id="${q.id}" class="survey-answer-radio" ${requiredAttr}>
         <span>${n}</span>
       </label>
     `).join('');
     return `
       <label>${escapeHtml(q.question_text)}${requiredMark}</label>
-      <div class="section-toggle" style="margin-bottom:14px;">${stars}</div>
+      <div class="choice-row">${stars}</div>
     `;
   }
   if (q.question_type === 'multiple_choice') {

@@ -1952,7 +1952,7 @@ function renderUsersList() {
     const canManage = !isSelf && (!isTargetSuperadmin || viewerIsSuperadmin);
 
     const roleBadge = u.role === 'superadmin'
-      ? `<span class="badge" style="border-color:#B8862E; color:#B8862E;">Super Admin</span>`
+      ? `<span class="badge" style="border-color:var(--new-border); color:var(--new-ink); background:var(--new-bg);">Super Admin</span>`
       : u.role === 'admin'
       ? `<span class="badge">Admin</span>`
       : `<span class="badge badge-muted">Owner</span>`;

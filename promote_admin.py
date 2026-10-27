@@ -9,7 +9,7 @@ Usage:
 """
 import sys
 
-from app.database import SessionLocal
+from app.database import SessionLocal, init_db
 from app.models import User
 
 VALID_ROLES = ("admin", "superadmin")
@@ -26,6 +26,7 @@ if __name__ == "__main__":
         print(f"Role must be one of: {', '.join(VALID_ROLES)}")
         sys.exit(1)
 
+    init_db()  # bring an older database up to date first (adds any missing columns in place)
     db = SessionLocal()
     user = (
         db.query(User)

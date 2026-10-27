@@ -145,28 +145,65 @@ python3 promote_admin.py your@email.com superadmin
 
 ## Updating the app later
 
-**Before pulling any update that changes the schema** (new columns/tables —
-this has happened with nearly every feature added so far), export a
-backup first: log in as your superadmin account → Site Settings →
-**Export full backup**. This downloads a JSON file with every user, form,
-submission, and setting — not a raw copy of the `.db` file, since that
-wouldn't survive a schema change anyway.
+**Normally you just pull and restart. Do not delete the database.**
 
 ```bash
-cd ~/virtual-suggestion-box
+cd ~/projects/virtual-suggestion-box
+# optional belt-and-braces: a consistent copy of the live database first
+sqlite3 suggestionbox.db ".backup '$HOME/suggestionbox-$(date +%Y%m%d-%H%M%S).db'"
 git pull
-rm -f suggestionbox.db   # only if the update actually changed the schema
 sudo systemctl restart suggestion-box
+sudo journalctl -u suggestion-box -n 20 --no-pager   # look for [migrate] lines
 ```
 
-If you wiped the database: register a fresh temporary account at
-`/register`, promote it to superadmin (`python3 promote_admin.py
-temp@email.com superadmin`), log in, then go to Site Settings → **Import
-a backup** and select the file you exported earlier. This restores
-everything — including your real account with its original password —
-and wipes the temporary bootstrap account in the process. You'll be
-logged out automatically once the import finishes; log back in with your
-real account.
+When an update adds columns to existing tables, the app upgrades the
+database **in place** the first time it starts: it adds the missing
+columns and touches nothing else — no rows are rewritten, moved, or
+deleted, and everyone stays logged in. Right before changing anything it
+writes a safety copy next to the database, named
+`suggestionbox.db.before-migration-<timestamp>`, and the journal shows
+exactly what it did:
+
+```
+[migrate] schema is behind the code — safety copy written to suggestionbox.db.before-migration-...
+[migrate] added column projects.group_name
+[migrate] done — 6 column(s) added, no existing data was modified
+```
+
+If an update ever needs a change the migrator can't make safely (a new
+NOT NULL column with no default, say), the app **refuses to start** and
+the journal says why, rather than running against a half-upgraded
+database. Your data is untouched in that case — tell whoever wrote the
+update and don't wipe anything.
+
+The old workflow (export → `rm suggestionbox.db` → re-import) is **no
+longer part of updating**. It cost data once because a backup is only as
+complete as the code that wrote it. Keep Export/Import for what it's
+actually for — moving to a new machine or recovering after the database
+file is lost (see below).
+
+### Moving the data to a new machine, or restoring after losing the file
+
+Site Settings → **Export full backup** downloads a JSON file with
+everything (users, forms and all their settings, submissions, survey
+questions and answers, notification settings). To restore: start the new
+install, register a temporary account at `/register`, promote it
+(`python3 promote_admin.py temp@email.com superadmin`), log in, then
+Site Settings → **Import a backup**. You'll be logged out when it
+finishes; log back in with your real account.
+
+### Refreshing a dev/test copy from production
+
+Don't export/import for this — copy the database itself. On the
+production machine:
+
+```bash
+sqlite3 suggestionbox.db ".backup '/tmp/prod-copy.db'"
+```
+
+Copy `/tmp/prod-copy.db` to the dev machine as its `suggestionbox.db`
+(with the dev service stopped), then start dev. If dev runs newer code it
+migrates the copy in place, exactly as above.
 
 ## Scheduled automatic backups
 

@@ -52,14 +52,19 @@ def build_submissions_csv(project: Project, submissions: list[Submission]) -> St
     admin.py, so the column layout can't drift between the two."""
     buffer = io.StringIO()
     writer = csv.writer(buffer)
+    # One extra column per survey question on this form (question text as the
+    # header), in the form's own question order — blank where a submission
+    # skipped that question. Forms with no questions get no extra columns.
+    questions = sorted(project.survey_questions, key=lambda q: q.display_order)
     writer.writerow([
         "submitted_at", "status", "anonymous", "submitter_name", "submitter_email",
         "suggestion", "nomination_reason", "nominees",
-    ])
+    ] + [q.question_text for q in questions])
     for s in submissions:
         nominees_str = "; ".join(
             f"{n.name} ({n.role})" if n.role else n.name for n in s.nominees
         )
+        answers_by_qid = {a.question_id: a.answer_text for a in s.survey_answers}
         writer.writerow([
             s.created_at.isoformat(),
             s.status,
@@ -69,7 +74,7 @@ def build_submissions_csv(project: Project, submissions: list[Submission]) -> St
             s.suggestion_text or "",
             s.nomination_reason or "",
             nominees_str,
-        ])
+        ] + [answers_by_qid.get(q.id, "") for q in questions])
 
     buffer.seek(0)
     filename = f"{project.slug}-submissions.csv"
