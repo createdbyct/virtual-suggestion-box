@@ -11,7 +11,12 @@
 </head>
 <body>
 
-<a href="/" class="page-brand-link">Virtual Suggestion Box</a>
+<div class="page-top">
+  <a href="/" class="page-brand-link">Virtual Suggestion Box</a>
+  <button type="button" class="share-circle-btn hidden" id="share-form-btn" aria-label="Share this form" title="Share this form">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/></svg>
+  </button>
+</div>
 <div class="card" id="card">
   <p class="subtitle">Loading…</p>
 </div>
@@ -135,8 +140,7 @@ function renderForm(form) {
 
   card.innerHTML = `
     <div class="stamp stamp-icon">${stampEmoji}</div>
-    <button type="button" class="share-icon-btn" id="share-form-btn" aria-label="Share this form" title="Share this form">🔗</button>
-    <p class="eyebrow">${isBoth ? 'Suggestions & recognition' : isSurveyOnly ? 'Survey' : (form.type === 'nomination' ? 'Employee recognition' : 'Idea box')}</p>
+    <div class="tag-row">${formTags(form)}</div>
     <h1>${escapeHtml(form.title)}</h1>
     <p class="subtitle">${escapeHtml(subtitleText)}</p>
 
@@ -181,7 +185,7 @@ function renderForm(form) {
       <button type="button" class="link-btn" id="show-identity-btn" style="margin-top:14px;">+ Add your name and email</button>
 
       ${(form.survey_questions || []).length > 0 ? `
-        <p class="section-title" style="margin-top:24px;">A few questions</p>
+        <div class="survey-divider"><span>Quick survey · ${form.survey_questions.length} question${form.survey_questions.length === 1 ? '' : 's'}</span></div>
         ${form.survey_questions.map(q => renderQuestionField(q)).join('')}
       ` : ''}
 
@@ -194,7 +198,9 @@ function renderForm(form) {
     document.getElementById('identity-fields').classList.remove('hidden');
     e.target.remove();
   });
-  document.getElementById('share-form-btn').addEventListener('click', () => {
+  const shareBtn = document.getElementById('share-form-btn');
+  shareBtn.classList.remove('hidden');
+  shareBtn.addEventListener('click', () => {
     const titleEl = document.querySelector('h1');
     showShareModal(window.location.href, titleEl ? titleEl.textContent : 'Form link');
   });
@@ -414,10 +420,19 @@ function renderQuestionField(q) {
 }
 
 function stampIcon(type) {
-  if (type === 'suggestion') return '💡';
-  if (type === 'nomination') return '🏆';
-  if (type === 'survey') return '📊';
-  return '📋';
+  const open = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  if (type === 'suggestion') return open + '<path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z"/></svg>';
+  if (type === 'nomination') return open + '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>';
+  if (type === 'survey') return open + '<path d="M4 19h16M7 19V9m5 10V5m5 14v-7"/></svg>';
+  return open + '<path d="M9 4h6l1 2h3v14H5V6h3zM9 12h6M9 16h4"/></svg>';
+}
+
+function formTags(form) {
+  const tags = [];
+  if (form.type === 'nomination' || form.type === 'both') tags.push('Nominations');
+  if (form.type === 'suggestion' || form.type === 'both') tags.push('Suggestions');
+  if (form.type === 'survey' || (form.survey_questions || []).length > 0) tags.push('Survey');
+  return tags.map(t => `<span class="tag-chip">${t}</span>`).join('');
 }
 
 function showToast(message) {

@@ -18,6 +18,11 @@
 
 <script>
 const card = document.getElementById('card');
+// The My Forms home is a flat page (stats + rows on the dotted background);
+// every other view keeps the paper card around it.
+new MutationObserver(() => {
+  card.classList.toggle('card-flat', !!card.querySelector('[data-flat]'));
+}).observe(card, { childList: true });
 
 function showToast(message) {
   let toast = document.getElementById('toast');
@@ -175,7 +180,7 @@ function renderTabs() {
 function bindChrome() {
   document.getElementById('logout-btn').addEventListener('click', handleLogout);
   document.getElementById('account-btn').addEventListener('click', renderAccountView);
-  document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
+  document.querySelectorAll('.tab-btn[data-tab], .dash-pill[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
       activeTab = btn.dataset.tab;
       renderCurrentTab();
@@ -542,20 +547,50 @@ async function handleDisable2fa() {
 
 // ---- My Forms tab (every logged-in user, admin or not) ----
 
+let formSearch = '';
+
+function formStats() {
+  const active = myProjects.filter(p => !p.is_archived && !p.is_template);
+  const now = Date.now();
+  const week = 7 * 24 * 3600 * 1000;
+  return {
+    forms: active.length,
+    submissions: active.reduce((n, p) => n + (p.submission_count || 0), 0),
+    review: active.reduce((n, p) => n + (p.new_submission_count || 0), 0),
+    closing: active.filter(p => p.expires_at && new Date(p.expires_at).getTime() > now && new Date(p.expires_at).getTime() - now < week).length,
+  };
+}
+
 function renderMyFormsView() {
   activeTab = 'my-forms';
+  const tabs = tabDefs();
+  const st = formStats();
   card.innerHTML = `
-    ${renderTopBar()}
-    ${renderTabs()}
-    <div class="top-bar" style="margin-bottom:14px;">
-      <h1 style="margin:0;">Your forms</h1>
-      <button type="button" class="link-btn" id="new-form-btn">+ New form</button>
+    <div class="dash-head" data-flat="1">
+      <nav class="dash-nav" aria-label="Main">
+        ${tabs.map(t => `<button type="button" class="dash-pill ${activeTab === t.id ? 'active' : ''}" data-tab="${t.id}">${t.label}</button>`).join('')}
+      </nav>
+      <div class="dash-head-right">
+        <span class="who">${escapeHtml(currentUser.name)} · ${escapeHtml(currentUser.username)}${currentUser.role === 'admin' ? ' · admin' : ''}${currentUser.role === 'superadmin' ? ' · superadmin' : ''}</span>
+        <button class="link-btn" id="account-btn">Account</button>
+        <button class="link-btn" id="logout-btn">Log out</button>
+        <button type="button" class="primary-btn" id="new-form-btn">+ New form</button>
+      </div>
     </div>
-    <p class="subtitle">Create a link, share it, and see what comes back.</p>
 
-    <div class="top-bar" style="margin-bottom:4px;">
-      <p class="section-title" style="margin:0;">Your forms (${myProjects.length})</p>
-      <button type="button" class="link-btn" id="toggle-archived-btn">${showArchivedForms ? 'Hide archived' : 'Show archived'}</button>
+    <div class="stat-row">
+      <div class="stat-card"><p class="stat-label">Active forms</p><p class="stat-num">${st.forms}</p></div>
+      <div class="stat-card"><p class="stat-label">Submissions</p><p class="stat-num">${st.submissions}</p></div>
+      <div class="stat-card stat-review"><p class="stat-label">Need review</p><p class="stat-num">${st.review}</p></div>
+      <div class="stat-card"><p class="stat-label">Closing soon</p><p class="stat-num">${st.closing}</p></div>
+    </div>
+
+    <div class="list-head">
+      <h1>My forms</h1>
+      <div class="list-tools">
+        <input type="search" id="form-search" placeholder="Search forms" aria-label="Search forms" value="${escapeAttr(formSearch)}">
+        <button type="button" class="link-btn" id="toggle-archived-btn">${showArchivedForms ? 'Hide archived' : 'Show archived'}</button>
+      </div>
     </div>
     <div class="project-list" id="project-list"></div>
   `;
@@ -563,11 +598,23 @@ function renderMyFormsView() {
   bindChrome();
   renderMyProjectList();
   document.getElementById('new-form-btn').addEventListener('click', showNewFormModal);
+  document.getElementById('form-search').addEventListener('input', (e) => {
+    formSearch = e.target.value;
+    renderMyProjectList();
+  });
   document.getElementById('toggle-archived-btn').addEventListener('click', async () => {
     showArchivedForms = !showArchivedForms;
     await loadMyProjects();
     renderMyFormsView();
   });
+}
+
+function stampSvg(type) {
+  const open = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  if (type === 'suggestion') return open + '<path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z"/></svg>';
+  if (type === 'nomination') return open + '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>';
+  if (type === 'survey') return open + '<path d="M4 19h16M7 19V9m5 10V5m5 14v-7"/></svg>';
+  return open + '<path d="M9 4h6l1 2h3v14H5V6h3zM9 12h6M9 16h4"/></svg>';
 }
 
 function showNewFormModal() {
@@ -638,40 +685,53 @@ function showNewFormModal() {
 
 function renderMyProjectList() {
   const list = document.getElementById('project-list');
+  const q = formSearch.trim().toLowerCase();
+  const shown = q ? myProjects.filter(p => (p.title || '').toLowerCase().includes(q) || (p.group_name || '').toLowerCase().includes(q)) : myProjects;
   if (myProjects.length === 0) {
     list.innerHTML = `<div class="empty-state">No forms yet — click "+ New form" above to get a shareable link.</div>`;
     return;
   }
+  if (shown.length === 0) {
+    list.innerHTML = `<div class="empty-state">No forms match "${escapeHtml(formSearch)}".</div>`;
+    return;
+  }
 
-  list.innerHTML = myProjects.map(p => {
+  list.innerHTML = shown.map((p, idx) => {
     const url = `${window.location.origin}/vb/${p.slug}`;
     const ownershipBadge = p.is_owner
       ? ''
       : `<span class="badge badge-muted">Shared by ${escapeHtml(p.owner_name || 'someone')}</span>`;
     const groupBadge = p.group_name ? ` <span class="badge badge-muted">${escapeHtml(p.group_name)}</span>` : '';
-    const templateBadge = p.is_template ? ` <span class="badge">Template</span>` : '';
+    const templateBadge = p.is_template ? ` <span class="badge badge-dashed">Template</span>` : '';
     const archivedBadge = p.is_archived ? ` <span class="badge badge-muted">Archived</span>` : '';
-
-    const needsReviewBadge = p.new_submission_count > 0
-      ? ` <span class="badge status-badge-new">${p.new_submission_count} need${p.new_submission_count === 1 ? 's' : ''} review</span>`
-      : '';
+    const tilt = [-6, 5, -3, 7][idx % 4];
+    const expiry = p.expires_at ? ` · closes ${new Date(p.expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '';
+    const n = p.new_submission_count || 0;
+    const reviewPill = n > 0
+      ? `<span class="badge status-badge-new review-pill">${n} need${n === 1 ? 's' : ''} review</span>`
+      : (p.submission_count > 0 ? `<span class="badge status-badge-done review-pill">All reviewed</span>` : '');
 
     return `
-      <div class="project-row">
-        <div class="project-row-top">
-          <div>
+      <div class="project-row ${p.is_archived ? 'is-archived' : ''}">
+        <div class="project-row-main">
+          <div class="row-stamp" style="transform:rotate(${tilt}deg)">${stampSvg(p.type)}</div>
+          <div class="row-info">
             <div class="project-row-title">${escapeHtml(p.title)} ${typeBadges(p.type)}${groupBadge}${templateBadge}${archivedBadge} ${ownershipBadge}</div>
-            <div class="project-row-meta">${url} · <strong>${p.submission_count}</strong> submission${p.submission_count === 1 ? '' : 's'}${needsReviewBadge}</div>
+            <div class="project-row-meta">${url.replace(/^https?:\/\//, '')}${expiry}</div>
           </div>
-          <div class="project-row-actions">
-            <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
-            <button class="link-btn share-link-btn" data-url="${url}">Share</button>
-            <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(p.title)}">QR Code to share</button>
-            <button class="link-btn view-submissions-btn" data-id="${p.id}">View submissions</button>
-            ${p.is_owner ? `<button class="link-btn edit-form-btn" data-id="${p.id}">Edit</button>` : ''}
-            ${p.is_owner ? `<button class="link-btn copy-form-btn" data-id="${p.id}" data-title="${escapeAttr(p.title)}">Copy</button>` : ''}
-            ${p.is_owner ? `<button class="link-btn archive-form-btn" data-id="${p.id}" data-archived="${p.is_archived}">${p.is_archived ? 'Unarchive' : 'Archive'}</button>` : ''}
+          <div class="row-counts">
+            ${reviewPill}
+            <span class="row-total"><strong>${p.submission_count}</strong> total</span>
           </div>
+        </div>
+        <div class="project-row-actions">
+          <button class="link-btn view-submissions-btn" data-id="${p.id}">Submissions</button>
+          <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
+          <button class="link-btn share-link-btn" data-url="${url}">Share</button>
+          <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(p.title)}">QR</button>
+          ${p.is_owner ? `<button class="link-btn edit-form-btn" data-id="${p.id}">Edit</button>` : ''}
+          ${p.is_owner ? `<button class="link-btn copy-form-btn" data-id="${p.id}" data-title="${escapeAttr(p.title)}">Copy</button>` : ''}
+          ${p.is_owner ? `<button class="link-btn archive-form-btn" data-id="${p.id}" data-archived="${p.is_archived}">${p.is_archived ? 'Unarchive' : 'Archive'}</button>` : ''}
         </div>
       </div>
     `;
