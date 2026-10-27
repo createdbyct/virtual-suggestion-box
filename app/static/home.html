@@ -29,9 +29,10 @@
   </div>
 </header>
 
-<section class="home-section">
-  <h2>What you get</h2>
-  <p class="lead">Built for teams who want a real tool, not a spreadsheet with extra steps.</p>
+<section class="home-block">
+ <div class="card features-card">
+  <p class="eyebrow">What you get</p>
+  <h2>A real tool, not a spreadsheet with extra steps.</h2>
   <div class="feature-grid">
     <div class="feature-card">
       <span class="icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z"/></svg><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8v5a4 4 0 01-8 0V4zM8 6H4v1a3 3 0 003 3M16 6h4v1a3 3 0 01-3 3M12 13v4M8 20h8"/></svg></span>
@@ -64,18 +65,14 @@
       <p>Pull every submission as a CSV whenever you need it — no lock-in.</p>
     </div>
   </div>
+ </div>
 </section>
 
-<section class="home-section" id="demo">
-  <h2>Try it yourself</h2>
-  <p class="lead">This is a live preview — nothing you type here gets saved anywhere.</p>
-  <div class="demo-card-wrap">
-    <span class="demo-badge">DEMO · nothing is saved</span>
-    <div class="card" id="demo-card" style="max-width: none;"></div>
-  </div>
+<section class="home-block" id="demo">
+  <div class="card" id="demo-card"></div>
 </section>
 
-<section class="home-section"><div class="card cta-card">
+<section class="home-block"><div class="card cta-card">
   <p class="eyebrow">Ready when you are</p>
   <h2>Set up your first form in under a minute.</h2>
   <p class="subtitle">Free to create — no credit card, nothing to install.</p>
@@ -94,9 +91,9 @@ function renderDemoForm() {
   demoCard.setAttribute('data-kind', 'suggestion');
   demoCard.innerHTML = `
     <div class="stamp stamp-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z"/></svg></div>
-    <p class="eyebrow">Suggestions & recognition</p>
+    <p class="eyebrow">Try it yourself · nothing is saved</p>
     <h1>Acme Co. Feedback</h1>
-    <p class="subtitle">Leave a suggestion, nominate a coworker, or both.</p>
+    <p class="subtitle">A live preview of what your team sees. Leave a suggestion, nominate a coworker, or both.</p>
 
     <form id="demo-form">
       <p class="hint">Pick one or both.</p>
