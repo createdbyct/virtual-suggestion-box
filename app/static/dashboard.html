@@ -1673,15 +1673,18 @@ async function handleTransferOwnership(e, projectId, projectTitle) {
 // ---- All Forms tab (admin only) ----
 
 let userFormsGroupBy = 'none';
+let userFormsShowArchived = false;
 
-function renderUserFormsView(userId, userName) {
+async function renderUserFormsView(userId, userName) {
+  await loadAllProjects();
   card.innerHTML = `
     ${renderTopBar()}
     <a class="back-link" id="back-link">&larr; Back to users</a>
     <div class="page-head page-head-row">
       <div><p class="eyebrow">Admin · Users</p><h1>${escapeHtml(userName)}'s forms</h1>
-      <p class="subtitle" style="margin:0;">Every form owned by this user, including archived ones.</p></div>
-      <div>
+      <p class="subtitle" style="margin:0;">Every form owned by this user. Archived forms are hidden unless you show them.</p></div>
+      <div class="list-tools">
+        <button type="button" class="link-btn" id="user-forms-archived-btn">Show archived</button>
         <label for="user-forms-group-by" class="hint">Group by</label>
         <select id="user-forms-group-by" style="width:auto; display:inline-block; margin-left:6px;">
           <option value="none" ${userFormsGroupBy === 'none' ? 'selected' : ''}>None</option>
@@ -1700,10 +1703,18 @@ function renderUserFormsView(userId, userName) {
   });
   bindChrome();
 
-  const forms = allProjects.filter(p => p.owner_id === userId);
+  const ownedForms = allProjects.filter(p => p.owner_id === userId);
+  const archivedCount = ownedForms.filter(p => p.is_archived).length;
+  const archBtn = document.getElementById('user-forms-archived-btn');
+  archBtn.textContent = userFormsShowArchived ? 'Hide archived' : `Show archived (${archivedCount})`;
+  archBtn.addEventListener('click', () => {
+    userFormsShowArchived = !userFormsShowArchived;
+    renderUserFormsView(userId, userName);
+  });
+  const forms = userFormsShowArchived ? ownedForms : ownedForms.filter(p => !p.is_archived);
   const list = document.getElementById('user-forms-list');
   if (forms.length === 0) {
-    list.innerHTML = `<div class="empty-state">This user hasn't created any forms yet.</div>`;
+    list.innerHTML = `<div class="empty-state">${ownedForms.length === 0 ? "This user hasn't created any forms yet." : 'No active forms. Use "Show archived" to see archived ones.'}</div>`;
     return;
   }
 
