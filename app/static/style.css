@@ -1505,3 +1505,16 @@ a.cta-link.cta-outline { background:var(--card); color:var(--accent); }
 .dash-chrome + .card, #card.card-wide { border-top-left-radius: 0; border-top-right-radius: 0; }
 #card.card-wide::before { display: none; }
 #card.card-wide { border-top: 0; padding-top: 28px; }
+
+/* Stat tiles: tinted fill, bold number; colour only when there is something to act on */
+.stat-card { position:relative; background: var(--accent-soft); border: 1.5px solid var(--border-strong); border-top: 1.5px solid var(--border-strong); border-radius: 8px; box-shadow: none; padding: 16px 20px 18px 24px; overflow: hidden; }
+.stat-card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:5px; background: var(--border-strong); }
+.stat-card .stat-label { color: var(--muted); font-weight: 500; }
+.stat-card .stat-num { font-size: 2.6rem; line-height: 1.05; margin-top: 4px; color: var(--muted); }
+.stat-card.stat-good { border-color: var(--accent); }
+.stat-card.stat-good::before { background: var(--accent); }
+.stat-card.stat-good .stat-num { color: var(--accent); }
+.stat-card.stat-alert { background: var(--new-bg); border-color: var(--new-border); box-shadow: 0 6px 16px -10px var(--new-border); }
+.stat-card.stat-alert::before { background: var(--new-border); }
+.stat-card.stat-alert .stat-label, .stat-card.stat-alert .stat-num { color: var(--new-ink); }
+.stat-card.stat-review { background: var(--accent-soft); border-color: var(--border-strong); }

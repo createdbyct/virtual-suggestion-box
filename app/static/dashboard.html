@@ -568,10 +568,10 @@ function renderMyFormsView() {
   const st = formStats();
   card.innerHTML = `
     <div class="stat-row">
-      <div class="stat-card"><p class="stat-label">Active forms</p><p class="stat-num">${st.forms}</p></div>
-      <div class="stat-card"><p class="stat-label">Submissions</p><p class="stat-num">${st.submissions}</p></div>
-      <div class="stat-card stat-review"><p class="stat-label">Need review</p><p class="stat-num">${st.review}</p></div>
-      <div class="stat-card"><p class="stat-label">Closing soon</p><p class="stat-num">${st.closing}</p></div>
+      <div class="stat-card ${st.forms > 0 ? 'stat-good' : ''}"><p class="stat-label">Active forms</p><p class="stat-num">${st.forms}</p></div>
+      <div class="stat-card ${st.submissions > 0 ? 'stat-good' : ''}"><p class="stat-label">Submissions</p><p class="stat-num">${st.submissions}</p></div>
+      <div class="stat-card ${st.review > 0 ? 'stat-alert' : ''}"><p class="stat-label">Need review</p><p class="stat-num">${st.review}</p></div>
+      <div class="stat-card ${st.closing > 0 ? 'stat-alert' : ''}"><p class="stat-label">Closing soon</p><p class="stat-num">${st.closing}</p></div>
     </div>
 
     <div class="page-head page-head-row">
