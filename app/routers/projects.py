@@ -62,7 +62,8 @@ def build_submissions_csv(project: Project, submissions: list[Submission]) -> St
     ] + [q.question_text for q in questions])
     for s in submissions:
         nominees_str = "; ".join(
-            f"{n.name} ({n.role})" if n.role else n.name for n in s.nominees
+            (f"{n.name} ({n.role})" if n.role else n.name) + (f": {n.reason}" if n.reason else "")
+            for n in s.nominees
         )
         answers_by_qid = {a.question_id: a.answer_text for a in s.survey_answers}
         writer.writerow([
@@ -293,6 +294,7 @@ def list_submissions(
                 Submission.nomination_reason.ilike(like),
                 Submission.submitter_name.ilike(like),
                 Nominee.name.ilike(like),
+                Nominee.reason.ilike(like),
             )
         ).distinct()
 
@@ -432,7 +434,8 @@ def list_survey_templates():
     """Built-in starter question sets — not user-creatable, just a fixed
     curated list (see survey_templates.py)."""
     return [
-        {"id": tid, "name": t["name"], "description": t["description"], "question_count": len(t["questions"])}
+        {"id": tid, "name": t["name"], "description": t["description"], "question_count": len(t["questions"]),
+         "questions": [{"question_text": q["question_text"], "question_type": q["question_type"], "required": q["required"]} for q in t["questions"]]}
         for tid, t in SURVEY_TEMPLATES.items()
     ]
 

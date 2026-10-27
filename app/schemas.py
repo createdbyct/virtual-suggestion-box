@@ -11,6 +11,15 @@ from pydantic import BaseModel, EmailStr, field_validator, model_validator
 class NomineeIn(BaseModel):
     name: str
     role: Optional[str] = None
+    reason: Optional[str] = None
+
+    @field_validator("reason", "role")
+    @classmethod
+    def strip_optional(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
     @field_validator("name")
     @classmethod
@@ -24,6 +33,7 @@ class NomineeIn(BaseModel):
 class NomineeOut(BaseModel):
     name: str
     role: Optional[str]
+    reason: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -107,11 +117,18 @@ class SurveyQuestionReorder(BaseModel):
     question_ids: List[int]  # full ordered list of every question's id for this form
 
 
+class SurveyTemplatePreviewQuestion(BaseModel):
+    question_text: str
+    question_type: str
+    required: bool = False
+
+
 class SurveyTemplateOut(BaseModel):
     id: str
     name: str
     description: str
     question_count: int
+    questions: List[SurveyTemplatePreviewQuestion] = []
 
 
 class ApplyTemplateIn(BaseModel):

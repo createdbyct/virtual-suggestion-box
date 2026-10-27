@@ -132,7 +132,7 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
     )
     if has_nomination:
         submission.nominees = [
-            Nominee(name=n.name, role=n.role) for n in payload.nominees
+            Nominee(name=n.name, role=n.role, reason=n.reason) for n in payload.nominees
         ]
     if submitted_answers:
         submission.survey_answers = [
@@ -161,6 +161,7 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
             project.title, payload.submitter_name, is_anonymous,
             submission.suggestion_text, submission.nomination_reason, nominee_names,
             survey_answer_pairs,
+            nominee_reasons=[(n.name, n.reason) for n in payload.nominees] if has_nomination else None,
         )
         if global_webhook_url:
             background_tasks.add_task(send_webhook_notification, global_webhook_url, message)

@@ -139,6 +139,9 @@ class Nominee(Base):
     submission_id = Column(Integer, ForeignKey("submissions.id"), nullable=False)
     name = Column(String, nullable=False)
     role = Column(String, nullable=True)
+    # Why THIS person deserves it — each nominee gets their own reason.
+    # Older submissions only have the shared Submission.nomination_reason.
+    reason = Column(String, nullable=True)
 
     submission = relationship("Submission", back_populates="nominees")
 

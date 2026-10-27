@@ -836,12 +836,15 @@ async function handleCreate(e) {
     return;
   }
 
+  const created = await res.json();
   await loadMyProjects();
   if (currentUser.role === 'admin' || currentUser.role === 'superadmin') await loadAllProjects();
   const modal = document.getElementById('new-form-modal-overlay');
   if (modal) modal.remove();
-  renderMyFormsView();
-  showToast('Form created');
+  // Straight into edit mode so the new form can be set up right away —
+  // surveys open on Questions, since that's the first thing they need.
+  renderEditPage(created.id, created.type === 'survey' ? 'questions' : 'settings');
+  showToast('Form created — finish setting it up below');
 }
 
 // ---- Form detail: one page for everything about a single form ----
@@ -1314,18 +1317,23 @@ async function showTemplateModal(projectId) {
   overlay.id = 'template-modal-overlay';
   overlay.className = 'qr-modal-overlay';
   overlay.innerHTML = `
-    <div class="qr-modal" style="max-width:460px; text-align:left;">
+    <div class="qr-modal tpl-modal" role="dialog" aria-label="Add questions from a template">
       <button type="button" class="qr-modal-close" id="template-modal-close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-      <p class="eyebrow">Templates</p>
-      <h1 style="font-size:1.25rem; margin-bottom:18px;">Use a template</h1>
-      <p class="hint" style="display:block; margin-bottom:16px;">Adds these questions after whatever's already on this form — doesn't replace anything.</p>
-      <div id="template-list"><p class="subtitle">Loading…</p></div>
+      <p class="eyebrow">Questions</p>
+      <h1 style="font-size:1.35rem; margin:0 0 6px;">Add from a template</h1>
+      <p class="hint" style="display:block; margin-bottom:14px;">Pick one to preview its questions. They're added after any questions already on this form.</p>
+      <div class="tpl-list" id="template-list" role="radiogroup" aria-label="Templates"><p class="subtitle">Loading…</p></div>
+      <div class="tpl-footer">
+        <button type="button" class="link-btn" id="tpl-cancel-btn">Cancel</button>
+        <button type="button" id="tpl-add-btn" disabled>Choose a template</button>
+      </div>
     </div>
   `;
   document.body.appendChild(overlay);
 
   const close = () => overlay.remove();
   document.getElementById('template-modal-close').addEventListener('click', close);
+  document.getElementById('tpl-cancel-btn').addEventListener('click', close);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
   const res = await fetch('/api/projects/templates');
@@ -1337,23 +1345,41 @@ async function showTemplateModal(projectId) {
     return;
   }
 
+  const typeLabel = { multiple_choice: 'Multiple choice', rating: 'Rating 1–5', short_text: 'Short text', yes_no: 'Yes / No' };
   list.innerHTML = templates.map(t => `
-    <div class="project-row" style="margin-bottom:10px;">
-      <div class="project-row-top">
-        <div>
-          <div class="project-row-title">${escapeHtml(t.name)}</div>
-          <div class="project-row-meta">${escapeHtml(t.description)} · ${t.question_count} question${t.question_count === 1 ? '' : 's'}</div>
+    <div class="tpl-option" data-id="${t.id}" role="radio" aria-checked="false" tabindex="0">
+      <div class="tpl-head">
+        <span class="tpl-radio" aria-hidden="true"></span>
+        <div class="tpl-title-wrap">
+          <div class="tpl-title">${escapeHtml(t.name)}</div>
+          <div class="tpl-desc">${escapeHtml(t.description)}</div>
         </div>
-        <div class="project-row-actions">
-          <button class="link-btn use-template-option-btn" data-id="${t.id}">Use this</button>
-        </div>
+        <span class="tpl-count">${t.question_count} question${t.question_count === 1 ? '' : 's'}</span>
       </div>
+      <ol class="tpl-preview">
+        ${(t.questions || []).map(q => `<li><span class="tpl-q">${escapeHtml(q.question_text)}</span><span class="tpl-type">${typeLabel[q.question_type] || q.question_type}${q.required ? ' · required' : ''}</span></li>`).join('')}
+      </ol>
     </div>
   `).join('');
 
-  list.querySelectorAll('.use-template-option-btn').forEach(btn => {
-    btn.addEventListener('click', () => handleApplyTemplate(projectId, btn.dataset.id));
+  const addBtn = document.getElementById('tpl-add-btn');
+  let selectedId = null;
+  const select = (opt) => {
+    selectedId = opt.dataset.id;
+    list.querySelectorAll('.tpl-option').forEach(o => {
+      const on = o === opt;
+      o.classList.toggle('selected', on);
+      o.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    const t = templates.find(x => x.id === selectedId);
+    addBtn.disabled = false;
+    addBtn.textContent = `Add ${t.question_count} question${t.question_count === 1 ? '' : 's'}`;
+  };
+  list.querySelectorAll('.tpl-option').forEach(opt => {
+    opt.addEventListener('click', () => select(opt));
+    opt.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(opt); } });
   });
+  addBtn.addEventListener('click', () => { if (selectedId) handleApplyTemplate(projectId, selectedId); });
 }
 
 async function handleApplyTemplate(projectId, templateId) {
@@ -1856,8 +1882,18 @@ function renderSubmissionList(submissions, projectId = null, isOwner = false) {
     } else if (s.suggestion_text) {
       body += `<p class="sub-text">${renderTruncatable(s.suggestion_text)}</p>`;
     }
-    if (hasNominees && s.nomination_reason) {
-      body += `<p class="sub-text">${renderTruncatable(s.nomination_reason)}</p>`;
+    if (hasNominees) {
+      const withReasons = s.nominees.filter(n => n.reason);
+      if (withReasons.length === 1 && s.nominees.length === 1) {
+        body += `<p class="sub-text">${renderTruncatable(withReasons[0].reason)}</p>`;
+      } else {
+        withReasons.forEach(n => {
+          body += `<div class="nominee-note"><span class="nominee-note-name">${escapeHtml(n.name)}${n.role ? ' · ' + escapeHtml(n.role) : ''}</span><p class="sub-text">${renderTruncatable(n.reason)}</p></div>`;
+        });
+      }
+      if (s.nomination_reason) {
+        body += `<p class="sub-text">${renderTruncatable(s.nomination_reason)}</p>`;
+      }
     }
     if (s.survey_answers && s.survey_answers.length > 0) {
       const short = s.survey_answers.filter(a => (a.answer_text || '').length <= 40);

@@ -55,8 +55,9 @@ function renderSubmission(submission) {
     body += `<div class="field-label">Suggestion</div><div style="margin-bottom:20px; white-space:pre-wrap;">${escapeHtml(submission.suggestion_text)}</div>`;
   }
   if (hasNomination) {
-    const chips = submission.nominees.map(n => `<span class="nominee-chip">${escapeHtml(n.name)}${n.role ? ' · ' + escapeHtml(n.role) : ''}</span>`).join('');
-    body += `<div class="field-label">Nominees</div><div style="margin-bottom:14px;">${chips}</div>`;
+    submission.nominees.forEach(n => {
+      body += `<div class="field-label">${escapeHtml(n.name)}${n.role ? ' · ' + escapeHtml(n.role) : ''}</div><div style="margin-bottom:20px; white-space:pre-wrap;">${n.reason ? escapeHtml(n.reason) : '<span class="hint">No reason given</span>'}</div>`;
+    });
     if (submission.nomination_reason) {
       body += `<div class="field-label">Reason</div><div style="margin-bottom:20px; white-space:pre-wrap;">${escapeHtml(submission.nomination_reason)}</div>`;
     }

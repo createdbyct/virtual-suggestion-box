@@ -115,16 +115,17 @@ function renderForm(form) {
 
     <form id="submit-form">
       ${isBoth ? `
-        <div class="section-toggle">
+        <div class="section-toggle choice-row two-up">
           <label class="toggle-option">
             <input type="checkbox" id="toggle-suggestion">
-            <span>💡 I have a suggestion</span>
+            <span class="opt-inner"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0012 3z"/></svg><span>Suggestion</span></span>
           </label>
           <label class="toggle-option">
             <input type="checkbox" id="toggle-nomination">
-            <span>🏆 I want to nominate someone</span>
+            <span class="opt-inner"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg><span>Nomination</span></span>
           </label>
         </div>
+        <p class="hint toggle-hint">Pick one or both.</p>
       ` : ''}
 
       <div class="panel ${isBoth ? 'hidden' : ''}" id="suggestion-panel" ${showSuggestion ? '' : 'style="display:none"'}>
@@ -139,8 +140,6 @@ function renderForm(form) {
           <label>Who are you nominating? <span class="hint">— add as many as you like</span></label>
           <div class="nominees-list" id="nominees-list"></div>
           <button type="button" class="add-nominee-btn" id="add-nominee-btn">+ Add another nominee</button>
-          <label for="nomination_reason">Why do they deserve it?</label>
-          <textarea id="nomination_reason" placeholder="What did they do? Be specific — great nominations tell a quick story."></textarea>
         ` : ''}
       </div>
 
@@ -207,6 +206,7 @@ function addNomineeRow() {
     <span class="nominee-number">Nominee ${nomineeCount}</span>
     <input type="text" class="nominee-name" placeholder="Name">
     <input type="text" class="nominee-role" placeholder="Role (optional)">
+    <textarea class="nominee-reason" rows="3" placeholder="Why do they deserve it? Be specific — a quick story helps."></textarea>
     <button type="button" class="remove-nominee" aria-label="Remove nominee"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   `;
   row.querySelector('.remove-nominee').addEventListener('click', () => {
@@ -229,6 +229,7 @@ function collectNominees() {
   return Array.from(rows).map(row => ({
     name: row.querySelector('.nominee-name').value.trim(),
     role: row.querySelector('.nominee-role').value.trim() || null,
+    reason: row.querySelector('.nominee-reason').value.trim() || null,
   })).filter(n => n.name);
 }
 
@@ -265,7 +266,7 @@ async function handleSubmit(e, isBoth, publicAnalytics) {
     : !!document.getElementById('suggestion_text');
   const includeNomination = isBoth
     ? document.getElementById('toggle-nomination').checked
-    : !!document.getElementById('nomination_reason');
+    : !!document.getElementById('nominees-list');
 
   if (isBoth && !includeSuggestion && !includeNomination) {
     showError('Pick at least one: a suggestion, a nomination, or both.');
@@ -278,9 +279,15 @@ async function handleSubmit(e, isBoth, publicAnalytics) {
     return;
   }
 
+  const missingReason = includeNomination && nominees.find(n => !n.reason);
+  if (missingReason) {
+    showError(`Tell us why ${missingReason.name} deserves it.`);
+    return;
+  }
+
   const payload = {
     suggestion_text: includeSuggestion ? document.getElementById('suggestion_text').value.trim() : null,
-    nomination_reason: includeNomination ? document.getElementById('nomination_reason').value.trim() : null,
+    nomination_reason: null,
     nominees: nominees,
     submitter_name: document.getElementById('submitter_name').value.trim() || null,
     submitter_email: document.getElementById('submitter_email').value.trim() || null,

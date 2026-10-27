@@ -42,7 +42,7 @@ def send_webhook_notification(webhook_url: str, message: str) -> bool:
 
 def build_submission_message(project_title: str, submitter_name, is_anonymous: bool,
                               suggestion_text, nomination_reason, nominee_names: list,
-                              survey_answers: list = None) -> str:
+                              survey_answers: list = None, nominee_reasons: list = None) -> str:
     who = submitter_name if (submitter_name and not is_anonymous) else "Someone (anonymous)"
     lines = [f"📬 New submission on \"{project_title}\" — from {who}"]
 
@@ -52,6 +52,10 @@ def build_submission_message(project_title: str, submitter_name, is_anonymous: b
 
     if nominee_names:
         lines.append(f"🏆 Nominated: {', '.join(nominee_names)}")
+        for name, reason in (nominee_reasons or []):
+            if reason:
+                preview = reason if len(reason) <= 200 else reason[:200].rstrip() + "…"
+                lines.append(f"   {name}: {preview}")
         if nomination_reason:
             preview = nomination_reason if len(nomination_reason) <= 200 else nomination_reason[:200].rstrip() + "…"
             lines.append(f"   Reason: {preview}")
