@@ -208,8 +208,7 @@ function renderAccountView() {
   card.innerHTML = `
     ${renderTopBar()}
     <a class="back-link" id="back-link">&larr; Back</a>
-    <h1>Account</h1>
-    <p class="subtitle">Manage your profile and security.</p>
+    <div class="page-head"><p class="eyebrow">Account</p><h1>Your account</h1><p class="subtitle">Manage your profile and security.</p></div>
 
     <p class="section-title">Profile</p>
     <div class="project-row">
@@ -575,8 +574,8 @@ function renderMyFormsView() {
       <div class="stat-card"><p class="stat-label">Closing soon</p><p class="stat-num">${st.closing}</p></div>
     </div>
 
-    <div class="list-head">
-      <h1>My forms</h1>
+    <div class="page-head page-head-row" data-flat="1">
+      <div><p class="eyebrow">Dashboard</p><h1>My forms</h1></div>
       <div class="list-tools">
         <input type="search" id="form-search" placeholder="Search forms" aria-label="Search forms" value="${escapeAttr(formSearch)}">
         <button type="button" class="link-btn" id="toggle-archived-btn">${showArchivedForms ? 'Hide archived' : 'Show archived'}</button>
@@ -859,7 +858,7 @@ async function renderAnalyticsView(projectId, isAdmin) {
   card.innerHTML = `
     ${renderTopBar()}
     <a class="back-link" id="back-link">&larr; Back to submissions</a>
-    <div class="page-title-block">
+    <div class="page-head">
       <p class="eyebrow">Analytics · ${data.total_submissions} response${data.total_submissions === 1 ? '' : 's'}</p>
       <h1>${escapeHtml(project.title)}</h1>
     </div>
@@ -895,8 +894,8 @@ async function renderSubmissionsPage(projectId) {
   card.innerHTML = `
     ${renderTopBar()}
     <a class="back-link" id="back-link">&larr; Back to your forms</a>
-    <div class="page-title-row">
-      <div class="page-title-block">
+    <div class="page-head page-head-row">
+      <div>
         <p class="eyebrow" id="submissions-count-label">Submissions</p>
         <h1>${escapeHtml(project.title)}</h1>
         <p class="meta-line">${typeBadges(project.type)} ${ownershipBadge} <span>${url.replace(/^https?:\/\//, '')}</span></p>
@@ -1081,8 +1080,8 @@ async function renderEditPage(projectId, editTab) {
   card.innerHTML = `
     ${renderTopBar()}
     <a class="back-link" id="back-link">&larr; Back to your forms</a>
-    <h1>${escapeHtml(project.title)} ${typeBadges(project.type)}</h1>
-    <p class="subtitle" style="font-family:'IBM Plex Mono',monospace; font-size:0.82rem;">${url}</p>
+    <div class="page-head"><p class="eyebrow">Edit form</p><h1>${escapeHtml(project.title)}</h1>
+    <p class="meta-line">${typeBadges(project.type)} <span>${url.replace(/^https?:\/\//, '')}</span></p></div>
     <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer" style="margin-bottom:4px;">Open</a>
     <button class="link-btn copy-link-btn" data-url="${url}" style="margin-bottom:4px;">Copy link</button>
     <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(project.title)}" style="margin-bottom:14px;">QR Code to share</button>
@@ -1679,8 +1678,9 @@ function renderUserFormsView(userId, userName) {
   card.innerHTML = `
     ${renderTopBar()}
     <a class="back-link" id="back-link">&larr; Back to users</a>
-    <div class="top-bar" style="margin-bottom:4px;">
-      <h1 style="margin:0;">${escapeHtml(userName)}'s forms</h1>
+    <div class="page-head page-head-row">
+      <div><p class="eyebrow">Admin · Users</p><h1>${escapeHtml(userName)}'s forms</h1>
+      <p class="subtitle" style="margin:0;">Every form owned by this user, including archived ones.</p></div>
       <div>
         <label for="user-forms-group-by" class="hint">Group by</label>
         <select id="user-forms-group-by" style="width:auto; display:inline-block; margin-left:6px;">
@@ -1691,7 +1691,6 @@ function renderUserFormsView(userId, userName) {
         </select>
       </div>
     </div>
-    <p class="subtitle">Every form owned by this user, including archived ones.</p>
     <div class="project-list" id="user-forms-list"></div>
   `;
   document.getElementById('back-link').addEventListener('click', renderUsersView);
@@ -1766,8 +1765,8 @@ async function renderAdminSubmissionsView(projectId) {
   card.innerHTML = `
     ${renderTopBar()}
     <a class="back-link" id="back-link">&larr; Back to ${escapeHtml(project.owner_name || project.owner_email)}'s forms</a>
-    <h1>${escapeHtml(project.title)} ${typeBadges(project.type)}</h1>
-    <p class="subtitle">Owned by ${escapeHtml(project.owner_email)} · ${submissions.length} submission${submissions.length === 1 ? '' : 's'}</p>
+    <div class="page-head"><p class="eyebrow">Submissions · ${submissions.length} total</p><h1>${escapeHtml(project.title)}</h1>
+    <p class="meta-line">${typeBadges(project.type)} <span>Owned by ${escapeHtml(project.owner_email)}</span></p></div>
     <button class="link-btn" id="admin-export-btn" style="margin-bottom:16px;">Export CSV</button>
     <button class="link-btn" id="admin-analytics-btn" style="margin-bottom:16px;">📊 View analytics</button>
     <div class="submission-list" id="submission-list"></div>
@@ -1925,8 +1924,7 @@ async function renderUsersView() {
   card.innerHTML = `
     ${renderTopBar()}
     ${renderTabs()}
-    <h1 data-flat="1">All users</h1>
-    <p class="subtitle">Promote, disable, or remove accounts.</p>
+    <div class="page-head" data-flat="1"><p class="eyebrow">Admin</p><h1>All users</h1><p class="subtitle">Promote, disable, or remove accounts.</p></div>
     <div class="form-row" style="margin-bottom:16px;">
       <div>
         <label for="user-filter-org">Organization</label>
@@ -2009,7 +2007,7 @@ function renderUsersList() {
       <div class="user-row">
         <div class="user-row-info">
           <div class="user-row-email">${escapeHtml(u.name)} ${roleBadge} ${statusBadge}</div>
-          <div class="user-row-meta">@${escapeHtml(u.username)} · ${escapeHtml(u.email)} · ${u.project_count} form${u.project_count === 1 ? '' : 'es'} · joined ${joined}${u.totp_enabled ? ' · 2FA on' : ''}${isSelf ? ' · this is you' : ''}</div>
+          <div class="user-row-meta">@${escapeHtml(u.username)} · ${escapeHtml(u.email)} · ${u.project_count} form${u.project_count === 1 ? '' : 's'} · joined ${joined}${u.totp_enabled ? ' · 2FA on' : ''}${isSelf ? ' · this is you' : ''}</div>
           ${orgDeptText ? `<div class="user-row-meta">${escapeHtml(orgDeptText)}</div>` : ''}
         </div>
         <div class="project-row-actions">
@@ -2216,11 +2214,11 @@ async function renderSiteSettingsView(settingsTab) {
   card.innerHTML = `
     ${renderTopBar()}
     ${renderTabs()}
-    <h1>Site settings</h1>
-    <p class="subtitle">Configuration that applies across the whole site, not just your account.</p>
-
+    <div class="page-head" data-flat="1"><p class="eyebrow">Admin</p><h1>Site settings</h1><p class="subtitle">Configuration that applies across the whole site, not just your account.</p></div>
+    <div class="panel">
     ${settingsTabRow}
     ${tabContent}
+    </div>
   `;
 
   bindChrome();

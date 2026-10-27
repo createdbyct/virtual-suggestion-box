@@ -1444,3 +1444,17 @@ a.cta-link.cta-outline { background:var(--card); color:var(--accent); }
 #edit-form .form-actions button { width:auto; min-width:120px; padding:0 22px; }
 #edit-form #edit-save-btn { margin:0; }
 #edit-form > label { margin-bottom:-12px; }
+
+/* ---- Uniform page headers & section titles ---- */
+.page-head { margin: 0 0 18px; }
+.page-head .eyebrow { margin: 0 0 6px; padding-right: 0; }
+.page-head h1 { font-size: 1.8rem; line-height: 1.15; margin: 0 0 6px; padding-right: 0; }
+.page-head .subtitle { margin: 0; }
+.page-head .meta-line { margin-top: 8px; }
+.page-head-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.page-head-row > div:first-child { flex: 1 1 260px; min-width: 0; }
+.page-head-row .page-title-actions { align-self: flex-start; }
+.section-title { font-size: 1.15rem; margin: 28px 0 12px; padding-top: 0; }
+.panel { background: var(--card); border-radius: 6px; border-top: 2px dashed var(--border-strong); box-shadow: 0 1px 0 var(--border); padding: 22px 26px 26px; }
+@media (max-width: 600px) { .panel { padding: 18px 16px 22px; } }
+.card.card-flat .page-head { margin-top: 24px; }
