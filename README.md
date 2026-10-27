@@ -1,148 +1,195 @@
-# Virtual Suggestion Box
+<div align="center">
 
-## Run locally
+<img src="docs/banner.svg" alt="Virtual Suggestion Box — suggestions, nominations and surveys from one simple link" width="100%">
+
+<br>
+
+![Python](https://img.shields.io/badge/Python-3-1F5C45?style=for-the-badge&logo=python&logoColor=F1EBDC&labelColor=17382B)
+![FastAPI](https://img.shields.io/badge/FastAPI-backend-1F5C45?style=for-the-badge&logo=fastapi&logoColor=F1EBDC&labelColor=17382B)
+![SQLite](https://img.shields.io/badge/SQLite-no%20server%20needed-1F5C45?style=for-the-badge&logo=sqlite&logoColor=F1EBDC&labelColor=17382B)
+![Self hosted](https://img.shields.io/badge/self--hosted-runs%20on%20a%20Raspberry%20Pi-F0B95A?style=for-the-badge&labelColor=17382B)
+
+**Share one link. People drop in ideas, nominate a coworker, or answer a survey —  
+anonymous by default, name optional. You see it all in one dashboard.**
+
+[Features](#-features) · [Screenshots](#-screenshots) · [Quick start](#-quick-start) · [Deploy](#-deploy-on-a-raspberry-pi) · [Configuration](#-configuration) · [Full guide](docs/GUIDE.md)
+
+</div>
+
+<br>
+
+## ✦ What it is
+
+Virtual Suggestion Box is a small, self-hosted web app for collecting feedback and recognition from a team. One form can take **suggestions**, **employee nominations**, **survey answers**, or any mix of the three. There's no build step, no external database, and no front-end framework: just FastAPI, SQLite and plain HTML/CSS/JS.
+
+It was built for a real emergency department's Employee of the Month nominations and has been in live use since, so the defaults lean toward *safe and simple* over *clever*.
+
+## ✦ Features
+
+| | |
+|---|---|
+| **📝 One form, three ways** | Suggestions, nominations, surveys, or a combined form where people pick which to fill in. |
+| **🕶️ Anonymous by default** | Every form accepts anonymous submissions. A name (and an optional email for a 24-hour view link) is never required. |
+| **🏆 Real nominations** | Nominate one person or a whole team in a single submission, each with a role and their own reason. |
+| **📊 Surveys with live results** | Short text, multiple choice, 1–5 rating and yes/no questions. Start from a template. Share results as charts, or keep them private. |
+| **👥 Share without losing control** | Give teammates view access to a form's submissions, or hand off ownership entirely. Admins and superadmins can see everything. |
+| **🔔 Notifications** | Per-person email and webhook notifications for each form's new submissions. |
+| **🗂️ Organise** | Groups, archiving, copying, expiry dates, QR codes and share links. |
+| **🔐 Secure by default** | Two-factor login (TOTP) with recovery codes, session management, login lockout and rate-limited public submissions. |
+| **📤 Your data, your way** | CSV export of any form, full JSON backups, and a scheduled backup script. |
+| **🌗 Light and dark** | Follows the device's setting, with a toggle on every page. Fully responsive. |
+
+## ✦ Screenshots
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<b>Home page</b><br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/home-dark.png">
+  <img src="docs/screenshots/home-light.png" alt="The home page">
+</picture>
+</td>
+<td width="50%" valign="top">
+<b>Dashboard</b><br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png">
+  <img src="docs/screenshots/dashboard-light.png" alt="The form owner dashboard">
+</picture>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<b>Public form: suggestion + nomination</b><br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/form-dark.png">
+  <img src="docs/screenshots/form-light.png" alt="A public form with a nomination open">
+</picture>
+</td>
+<td width="50%" valign="top">
+<b>Survey results</b><br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/results-dark.png">
+  <img src="docs/screenshots/results-light.png" alt="Public survey results">
+</picture>
+</td>
+</tr>
+</table>
+
+<details>
+<summary><b>Analytics and mobile</b></summary>
+<br>
+<table>
+<tr>
+<td width="60%" valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/analytics-dark.png">
+  <img src="docs/screenshots/analytics-light.png" alt="Form analytics">
+</picture>
+</td>
+<td width="40%" valign="top" align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-form-dark.png">
+  <img src="docs/screenshots/mobile-form-light.png" alt="The public form on a phone" width="260">
+</picture>
+</td>
+</tr>
+</table>
+</details>
+
+## ✦ Quick start
+
 ```bash
+git clone https://github.com/createdbyct/virtual-suggestion-box.git
+cd virtual-suggestion-box
+
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+python3 run.py            # http://localhost:1994
 ```
 
-## Pages
-- `/` — homepage: what the product does, feature overview, and a live demo form that doesn't save anything
-- `/register` — create an account: full name, username, email, password
-- `/login` — log in with email *or* username, plus your authenticator code (or a recovery code) if 2FA is on
-- `/forgot-password` and `/reset-password/{token}` — password recovery (see below)
-- `/dashboard` (or `/admin` — same page) — "My Forms" for everyone; admins
-  additionally see a "Users" tab, from which each user's forms can be
-  drilled into (view submissions, or open the form directly).
-- `/vb/{slug}` — public submission page for a form
-- `/edit/{token}` — read-only view of your own submission, valid for 24hrs after submitting (submissions can't be edited, only viewed)
+Then:
 
-A dark mode toggle (🌙/☀️) sits in the top-right corner of every page.
+1. Open `/register` and create your account.
+2. Promote yourself (there is deliberately no public path to admin):
+   ```bash
+   python3 promote_admin.py you@example.com superadmin
+   ```
+3. Reload `/dashboard`. Create a form, copy its link, and share it.
 
-## First-time setup
-1. Run the server, go to `/register`, create your account.
-2. There's no public path to becoming an admin — promote yourself with `promote_admin.py`:
+The SQLite database (`suggestionbox.db`) is created on first run. Schema changes are applied automatically and additively on startup, with a safety copy written first, so **updating never wipes your data**.
+
+## ✦ Deploy on a Raspberry Pi
+
+The app is light enough to run on a Raspberry Pi 2. [`install.md`](install.md) walks through the whole setup:
+
+- flashing a headless OS and installing dependencies
+- running it as a `systemd` service
+- exposing it with a **Cloudflare Tunnel** (no open ports)
+- optional SMTP for password-reset email
+
+**Updating a running install:**
+
 ```bash
-python3 promote_admin.py your@email.com admin
-```
-3. Reload `/dashboard` — you'll see the "Users" tab alongside your own forms.
-
-There's a tier above admin too — see **Super admin & site settings** below.
-
-## Two-factor authentication
-From `/dashboard` → **Account** → **Enable 2FA**:
-1. Scan the QR code with an authenticator app (Google Authenticator, Authy, 1Password, etc.) — or type in the manual key shown beneath it.
-2. Enter the 6-digit code the app shows to confirm. 2FA isn't active until this step succeeds.
-3. From then on, logging in with that account's password also prompts for a fresh code.
-
-Disabling 2FA requires re-entering your password, and TOTP codes are checked with a small clock-drift window (±30s) so it isn't overly strict about exact timing.
-
-**Recovery codes**: 8 single-use backup codes are generated the moment 2FA is confirmed, shown once, and can be used at the login screen in place of a 6-digit code if you lose your device. Regenerating codes (Account page) invalidates all previous ones. Remaining-code count is shown on the Account page so you know when to regenerate.
-
-Implementation note: TOTP (RFC 6238) is implemented directly with the standard library (`hmac`/`hashlib`/`base64`/`struct`) — no extra package. The QR code itself is rendered entirely in the browser from a standard `otpauth://` URI via a small CDN-hosted JS library, so the backend never needs an image-generation dependency either.
-
-## Password reset
-`/login` → **Forgot password?** → enter your email or username. Links expire after 1 hour and are single-use; resetting invalidates every existing session on the account, forcing a fresh login everywhere.
-
-**If `SMTP_HOST`/`SMTP_USERNAME`/`SMTP_PASSWORD` are set** (see `install.md`), the reset link is actually emailed — no reset link is ever shown on-screen or returned by the API in this mode.
-
-**If SMTP isn't configured**, the app falls back to handing the link back directly on-screen instead — functionally the same as clicking a reset link, just without the email round-trip. Treat that link like a password: anyone with it can reset the account. This is also what happens automatically if SMTP is configured but the actual send fails for some reason (bad credentials, host unreachable) — nobody gets locked out of resetting just because email delivery broke.
-
-Submission view links and new-submission notifications are intentionally *not* emailed — only password reset uses this. Implementation is stdlib `smtplib` only, no extra package to install.
-
-As a backup path, an admin can reset any user's password directly from the Users tab — this generates a temporary password shown once to the admin, who's responsible for getting it to the account holder out of band (Slack, in person, etc.).
-
-## Login lockout
-5 failed login attempts (tracked per IP + identifier) locks that combination out for 15 minutes. This is in-memory, not persisted — restarting the server clears all lockouts. If this ever runs behind multiple worker processes, this (and the submission rate limiter below) would need to move to a shared store like Redis, since each process currently tracks its own counts independently.
-
-## Rate limiting on public submissions
-Each IP is capped at 10 submissions per 10 minutes across all forms, to blunt naive spam/scripted abuse. Legitimate shared-office IPs shouldn't hit this under normal use. Same in-memory-only caveat as login lockout above.
-
-## Sessions
-Account page → **Active sessions** shows every device currently logged into your account (IP + user-agent + when), with the ability to log out any individual one or all others at once — useful if you left yourself logged in somewhere, or suspect something's wrong. Password resets (self-service or admin-triggered) automatically clear all sessions on that account as a security measure.
-
-Cookies aren't marked `Secure` by default so local `http://` dev keeps working out of the box. Before deploying behind real HTTPS (e.g. a Cloudflare Tunnel), set `COOKIE_SECURE=true` in the environment:
-```bash
-COOKIE_SECURE=true uvicorn app.main:app --host 0.0.0.0 --port 8000
+cd virtual-suggestion-box
+git pull
+sudo systemctl restart suggestion-box
 ```
 
-## How a form works
-Each form (`Project`) has a `type`:
-- `'suggestion'` — submitters only see a suggestion field
-- `'nomination'` — submitters only see nominee fields (name + role, can add several)
-- `'both'` — submitters check "I have a suggestion" and/or "I want to nominate someone," and fill in whichever they pick
-- `'survey'` — submitters only see this form's questions; no suggestion/nomination fields at all
+## ✦ Configuration
 
-Survey questions (see below) can be added to *any* of these four types — `'both'` plus questions gets you all three (suggestions, nominations, and survey) in one submission; `'survey'` gets you a form that's nothing but questions.
+Everything works with no configuration. These environment variables are optional:
 
-Every form always accepts anonymous submissions. A submitter can optionally give their name (and email, which unlocks a 24hr link to view what they submitted — it's read-only, not an edit link); leaving it blank submits anonymously.
+| Variable | Purpose |
+|---|---|
+| `COOKIE_SECURE` | Set to `true` when serving over HTTPS (e.g. behind a tunnel) so session cookies are marked `Secure`. |
+| `PUBLIC_BASE_URL` | Public URL used in emailed links, e.g. `https://suggestions.example.com`. |
+| `SMTP_HOST` `SMTP_PORT` `SMTP_USERNAME` `SMTP_PASSWORD` | Outgoing mail for password reset and notifications. Can also be set in **Site Settings**. |
+| `SMTP_FROM_EMAIL` `SMTP_FROM_NAME` | Sender address and display name. |
 
-## Survey questions (optional, on any form)
-An add-on to any form — not a separate form type — from Edit → **Questions**: multiple choice, rating (1–5), short text, or yes/no, each individually markable as required or optional, reorderable via the up/down arrows. Answered on the same submission alongside suggestions/nominations, not a separate response flow. Deleting a question deletes every historical answer to it too — same permanence as deleting a form or a submission elsewhere in this app.
+Scheduled backups: run `python3 backup_db.py` from cron to write timestamped JSON backups and prune old ones.
 
-**Templates** (Questions tab → 📋 Use a template): a fixed set of built-in starter question sets — Customer Satisfaction, Event Feedback, NPS, Employee Engagement, Meeting Feedback (see `survey_templates.py`). Applying one appends its questions after whatever's already there; it never replaces or deduplicates, so applying the same template twice adds it twice.
+## ✦ Built with
 
-**Analytics** (View submissions → 📊 View analytics): response counts and percentage breakdowns for multiple-choice/yes-no questions, average score for rating questions, and the raw list of answers for short-text questions. Owner-only by default — the Edit → Settings "Make analytics public" checkbox lets anyone with the form's link view the same results (never individual submissions) at `/results/{slug}`. A "📊 View results" link appears on the confirmation screen right after someone submits, not on the form itself before they've answered. Admins/superadmins get the same 📊 View analytics button when viewing another user's form (Users → View forms → View submissions), backed by its own `/api/admin/projects/{id}/analytics` endpoint that shares the exact same aggregation code as the owner's view.
+- **[FastAPI](https://fastapi.tiangolo.com/)** and **[SQLAlchemy](https://www.sqlalchemy.org/)** on **SQLite**
+- Plain **HTML, CSS and vanilla JS**. No bundler, no framework, no build step
+- Standard-library **TOTP** (RFC 6238) and **PBKDF2** password hashing
+- Fonts: Fraunces, IBM Plex Sans and IBM Plex Mono
 
-## Form management: groups, archiving, copying, form templates, expiration
-- **Group** (Edit → Settings): a free-text tag (e.g. "HR Forms", "Q4 2026") shown as a badge in My Forms — not a separate folder structure, just a filterable label.
-- **Archive** (My Forms, per row): hides a form from the default list without deleting it — still fully functional if visited directly. "Show archived" toggles visibility.
-- **Copy** (My Forms, per row): duplicates a form's title/type/description/settings/questions into a brand-new form with its own link — never copies submissions. The copy always starts as a plain, non-template, non-archived form with no expiration, regardless of what the source had.
-- **Form templates** (Edit → Settings → "Use as a starting template"): distinct from the built-in *survey question* templates above — this flags one of *your own* forms so it shows up under "start from a template" in the New Form dialog. Picking one uses the same copy mechanism, then opens the new copy for editing.
-- **Expiration** (Edit → Settings): once the set time passes, the form stops accepting new submissions (`403` on `POST .../submit`). If the owner has also made analytics public, visiting the expired form automatically pops up the results instead of the submission form.
+<details>
+<summary><b>Project layout</b></summary>
 
-## Reviewing submissions
-Each submission has a status — `new`, `reviewed`, or `done` — that the owner or anyone the form is shared with can update inline while browsing. The submissions list supports text search (matches suggestion text, nomination reason, submitter name, and nominee names) and a status filter, both server-side and paginated (10 per page) so this stays usable once a form has hundreds of entries. Deleting an individual submission is owner-only, unlike status updates or viewing, which shared viewers can also do.
-
-## Sharing forms with other users
-From `/dashboard` → find your form → **Share**:
-- **Give access**: enter someone's email or username to let them view that form's submissions and export its CSV. They can't edit the form, delete it, manage who else has access, or reach this Share page at all — those stay owner-only.
-- **Remove**: revokes a person's access instantly.
-- **Transfer ownership**: hands the form to someone else entirely. They become the owner (can edit/delete/share it); you automatically keep view-only access so you don't lose visibility into data you used to own. This can't be undone by you alone — the new owner would have to transfer it back.
-
-A form shows up in everyone's "My Forms" list who has any relationship to it — owned forms and forms shared with you both appear there, with a "Shared by {name}" badge distinguishing the ones you don't own.
-
-## Editing your profile
-From `/dashboard` → **Account** → **Edit profile**: name, and optional organization/department (self-service). Username and email aren't editable yet (kept simple to avoid uniqueness-collision handling on those fields for now).
-
-## Super admin & site settings
-A tier above regular admin, for whoever actually runs the site — currently
-the only thing it controls is site-wide config, via a **Site Settings** tab
-that only appears for this role:
-- **Footer credit** — text and an optional link shown at the bottom of the homepage (e.g. "Built by Christian Taylor" linking to a resume/portfolio site). Leave the text blank to hide it entirely.
-- **Dark mode on/off, site-wide** — disabling it removes the theme toggle from every page and forces light mode for every visitor, overriding their own browser/system preference.
-
-A superadmin also has every regular admin capability (Users tab and its forms drill-down, etc.) plus their own forms like any owner — it's a strict superset, not a separate parallel role.
-
-There's no path to this role through the app at all, not even for another admin — it's promoted the same way as admin, via the script, just with the role argument:
-```bash
-python3 promote_admin.py your@email.com superadmin
 ```
-Regular admins can't view, disable, delete, or reset the password of a superadmin's account — only another superadmin can. This is enforced server-side, not just hidden in the UI.
+.
+├── app/
+│   ├── main.py            # app setup, routing, static pages
+│   ├── models.py          # SQLAlchemy models
+│   ├── schemas.py         # Pydantic schemas
+│   ├── migrate.py         # additive, in-place schema migrations
+│   ├── analytics.py       # survey and submission analytics
+│   ├── auth.py  totp.py   # sessions, passwords, two-factor
+│   ├── mailer.py  webhook.py
+│   ├── backup.py          # JSON export / import
+│   ├── routers/           # public, auth, projects, admin, settings
+│   └── static/            # all pages, style.css, theme.js
+├── docs/                  # README assets and the full guide
+├── backup_db.py           # scheduled backup script
+├── promote_admin.py       # grant admin / superadmin
+├── install.md             # Raspberry Pi deployment walkthrough
+└── run.py                 # dev server launcher
+```
+</details>
 
-## Backups (superadmin only, via Site Settings)
-`/dashboard` → **Site Settings** → **Backups**:
-- **Export full backup** — downloads the whole database as structured JSON: users (including organization/department), forms with every setting, submissions, nominees, survey questions and answers, shares, recovery codes, notification watch settings, and all site settings including the webhook/email/SMTP configuration (so treat the file as sensitive — it already contains password hashes). Deliberately *not* a raw copy of the `.db` file — a raw file copy wouldn't survive a schema change (new columns/tables), which is exactly the situation this is meant to protect against. Export and import are driven by the database models themselves (`app/backup.py`), so a new column is included automatically, and export refuses to run — with an error naming the model — if a new table hasn't been registered there, rather than quietly producing an incomplete backup. Older (version 1) backups still import; anything they predate just takes its default.
-- **Import a backup** — wipes every user, form, submission, and setting currently in the database and replaces it all with the file's contents, preserving the original IDs (so foreign key relationships stay intact). Sessions and password-reset tokens are intentionally excluded from both export and import; everyone (including whoever's doing the import) gets logged out and has to log back in afterward.
-- Updates no longer need export → wipe → import. When a new version adds columns, the app upgrades the existing database in place on startup (`app/migrate.py`: additive only, safety copy first, refuses to start rather than half-migrate). Export/Import is for moving machines or recovering a lost database file — see `install.md`.
+## ✦ Documentation
 
-## Account management (admin only, via the Users tab)
-- Promote/demote between owner and admin
-- Disable/enable an account — disabling immediately invalidates that user's active session too, not just future logins
-- Delete an account — cascades to their forms, submissions, and nominees
-- An admin can't demote, disable, or delete their own account; another admin has to do it
-- Set or edit a user's organization/department ("Edit org/dept") — same fields a user can set themselves, useful when they haven't filled them in
-- Filter the user list by organization or department using the dropdowns above it, populated from whatever values are actually in use
-- Group the user list by organization, department, or role ("Group by" dropdown) — clusters the list under headers instead of filtering anything out
-- From Users → **View forms**, group that user's forms by their group tag, type, or archived status — archived forms show an "Archived" badge and are included by default, not hidden
+The **[full guide](docs/GUIDE.md)** covers every page, roles and permissions, two-factor authentication, password reset, sessions, rate limiting, form management, survey templates, backups and site settings.
 
-## Notes
-- Sessions are cookie-based (httpOnly, 14-day expiry), stored server-side in `auth_sessions` — logging out invalidates the session row, not just the cookie.
-- Passwords are hashed with PBKDF2-SHA256 (stdlib only, no bcrypt to install).
-- Login accepts either email or username in the same field.
-- CSV export (including status) is available to owners, anyone the form is shared with, and admins (for any form).
+<br>
 
-## Still to build
-- Email for the 24hr submission-view link (intentionally out of scope — only password reset uses email, see above)
-- Per-project Google Sheets export
-- Shared Redis-backed rate limiting / lockout if this ever runs across multiple worker processes
+<div align="center">
+
+Made by **[CREATEDBYCT STUDIO](https://createdbyct.studio)**
+
+</div>
