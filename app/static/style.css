@@ -1487,3 +1487,21 @@ a.cta-link.cta-outline { background:var(--card); color:var(--accent); }
 .notify-label { font-family:'IBM Plex Mono',monospace; font-size:0.68rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
 .notify-opt { display:inline-flex; align-items:center; gap:8px; margin:0; font-size:0.88rem; font-weight:500; cursor:pointer; min-height:44px; }
 .notify-opt input { width:20px; height:20px; margin:0; accent-color:var(--accent); }
+
+/* Long titles: title on its own line, tags beneath, counts wrap instead of colliding */
+.row-info { flex: 1 1 220px; }
+.row-info .project-row-title { display: block; overflow-wrap: anywhere; line-height: 1.25; }
+.row-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+.row-tags:empty { display: none; }
+.row-info .project-row-meta { overflow-wrap: anywhere; }
+.row-counts { flex: none; margin-left: auto; }
+
+/* inline expand/collapse text link */
+.text-link { background: none; border: 0; padding: 0 2px; margin: 0 0 0 2px; width: auto; min-height: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.text-link:hover { background: none; filter: none; color: var(--ink); }
+
+/* Menu bar + page card read as one box */
+.dash-chrome .dash-head { margin-bottom: 0; border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--border); box-shadow: none; padding: 12px 22px; }
+.dash-chrome + .card, #card.card-wide { border-top-left-radius: 0; border-top-right-radius: 0; }
+#card.card-wide::before { display: none; }
+#card.card-wide { border-top: 0; padding-top: 28px; }

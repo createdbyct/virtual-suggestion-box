@@ -704,7 +704,8 @@ function renderMyProjectList() {
         <div class="project-row-main">
           <div class="row-stamp" style="transform:rotate(${tilt}deg)">${stampSvg(p.type)}</div>
           <div class="row-info">
-            <div class="project-row-title">${escapeHtml(p.title)} ${typeBadges(p.type)}${groupBadge}${templateBadge}${archivedBadge} ${ownershipBadge}</div>
+            <div class="project-row-title">${escapeHtml(p.title)}</div>
+            <div class="row-tags">${typeBadges(p.type)}${groupBadge}${templateBadge}${archivedBadge} ${ownershipBadge}</div>
             <div class="project-row-meta">${url.replace(/^https?:\/\//, '')}${expiry}</div>
           </div>
           <div class="row-counts">
@@ -1735,7 +1736,8 @@ async function renderUserFormsView(userId, userName) {
         <div class="project-row-main">
           <div class="row-stamp" style="transform:rotate(${tilt}deg)">${stampSvg(p.type)}</div>
           <div class="row-info">
-            <div class="project-row-title">${escapeHtml(p.title)} ${typeBadges(p.type)}${groupBadge}${archivedBadge}</div>
+            <div class="project-row-title">${escapeHtml(p.title)}</div>
+            <div class="row-tags">${typeBadges(p.type)}${groupBadge}${archivedBadge}</div>
             <div class="project-row-meta">${url.replace(/^https?:\/\//, '')}</div>
           </div>
           <div class="row-counts">
@@ -1819,7 +1821,7 @@ function renderTruncatable(text, maxLen = 280) {
   const truncated = text.slice(0, maxLen).trim() + '…';
   return `
     <span class="truncatable-text" data-truncated="${escapeAttr(truncated)}" data-full="${escapeAttr(text)}" data-expanded="false">${escapeHtml(truncated)}</span>
-    <button type="button" class="show-more-btn link-btn" style="margin-left:6px; padding:2px 10px; font-size:0.75rem; vertical-align:middle;">Show more</button>
+    <button type="button" class="show-more-btn text-link">…more</button>
   `;
 }
 
@@ -1896,7 +1898,7 @@ function renderSubmissionList(submissions, projectId = null, isOwner = false) {
       const expanded = span.dataset.expanded === 'true';
       span.textContent = expanded ? span.dataset.truncated : span.dataset.full;
       span.dataset.expanded = expanded ? 'false' : 'true';
-      btn.textContent = expanded ? 'Show more' : 'Show less';
+      btn.textContent = expanded ? '…more' : 'less';
     });
   });
 
