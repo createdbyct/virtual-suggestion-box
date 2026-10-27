@@ -1458,3 +1458,4 @@ a.cta-link.cta-outline { background:var(--card); color:var(--accent); }
 .panel { background: var(--card); border-radius: 6px; border-top: 2px dashed var(--border-strong); box-shadow: 0 1px 0 var(--border); padding: 22px 26px 26px; }
 @media (max-width: 600px) { .panel { padding: 18px 16px 22px; } }
 .card.card-flat .page-head { margin-top: 24px; }
+.panel > .subtitle:first-child { margin-top: 0; }
