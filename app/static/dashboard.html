@@ -12,6 +12,7 @@
 <body>
 
 <a href="/" class="page-brand-link wide">Virtual Suggestion Box</a>
+<div class="dash-chrome" id="dash-chrome"></div>
 <div class="card card-wide" id="card">
   <p class="subtitle">Loading…</p>
 </div>
@@ -141,19 +142,36 @@ function typeBadges(type) {
 
 // ---- Shared chrome: top bar + tabs ----
 
-function renderTopBar() {
-  return `
-    <div class="top-bar">
-      <div>
-        <p class="eyebrow" style="margin-bottom:2px;">Dashboard</p>
+// The header (nav pills, who, Account / Log out / + New form) lives outside the
+// card so every dashboard screen shares it. Views no longer render their own.
+function renderTopBar() { return ''; }
+
+function renderChrome() {
+  const chrome = document.getElementById('dash-chrome');
+  if (!currentUser) return;
+  const tabs = tabDefs();
+  chrome.innerHTML = `
+    <div class="dash-head">
+      <nav class="dash-nav" aria-label="Main">
+        ${tabs.length > 1 ? tabs.map(t => `<button type="button" class="dash-pill ${activeTab === t.id ? 'active' : ''}" data-tab="${t.id}">${t.label}</button>`).join('') : ''}
+      </nav>
+      <div class="dash-head-right">
         <span class="who">${escapeHtml(currentUser.name)} · ${escapeHtml(currentUser.username)}${currentUser.role === 'admin' ? ' · admin' : ''}${currentUser.role === 'superadmin' ? ' · superadmin' : ''}</span>
-      </div>
-      <div style="display:flex; gap:8px;">
         <button class="link-btn" id="account-btn">Account</button>
         <button class="link-btn" id="logout-btn">Log out</button>
+        <button type="button" class="primary-btn" id="new-form-btn">+ New form</button>
       </div>
     </div>
   `;
+  document.getElementById('logout-btn').addEventListener('click', handleLogout);
+  document.getElementById('account-btn').addEventListener('click', renderAccountView);
+  document.getElementById('new-form-btn').addEventListener('click', showNewFormModal);
+  chrome.querySelectorAll('.dash-pill[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTab = btn.dataset.tab;
+      renderCurrentTab();
+    });
+  });
 }
 
 function tabDefs() {
@@ -167,28 +185,12 @@ function tabDefs() {
   return tabs;
 }
 
-function renderTabs() {
-  const tabs = tabDefs();
-  if (tabs.length === 1) return ''; // plain owners don't need a tab bar at all
-  return `
-    <div class="tab-row">
-      ${tabs.map(t => `<button class="tab-btn ${activeTab === t.id ? 'active' : ''}" data-tab="${t.id}">${t.label}</button>`).join('')}
-    </div>
-  `;
-}
+function renderTabs() { return ''; }
 
-function bindChrome() {
-  document.getElementById('logout-btn').addEventListener('click', handleLogout);
-  document.getElementById('account-btn').addEventListener('click', renderAccountView);
-  document.querySelectorAll('.tab-btn[data-tab], .dash-pill[data-tab]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      activeTab = btn.dataset.tab;
-      renderCurrentTab();
-    });
-  });
-}
+function bindChrome() { /* header is bound once in renderChrome() */ }
 
 function renderCurrentTab() {
+  renderChrome();
   if (activeTab === 'users') renderUsersView();
   else if (activeTab === 'site-settings') renderSiteSettingsView();
   else renderMyFormsView();
@@ -563,22 +565,9 @@ function formStats() {
 
 function renderMyFormsView() {
   activeTab = 'my-forms';
-  const tabs = tabDefs();
   const st = formStats();
   card.innerHTML = `
-    <div class="dash-head" data-flat="1">
-      <nav class="dash-nav" aria-label="Main">
-        ${tabs.map(t => `<button type="button" class="dash-pill ${activeTab === t.id ? 'active' : ''}" data-tab="${t.id}">${t.label}</button>`).join('')}
-      </nav>
-      <div class="dash-head-right">
-        <span class="who">${escapeHtml(currentUser.name)} · ${escapeHtml(currentUser.username)}${currentUser.role === 'admin' ? ' · admin' : ''}${currentUser.role === 'superadmin' ? ' · superadmin' : ''}</span>
-        <button class="link-btn" id="account-btn">Account</button>
-        <button class="link-btn" id="logout-btn">Log out</button>
-        <button type="button" class="primary-btn" id="new-form-btn">+ New form</button>
-      </div>
-    </div>
-
-    <div class="stat-row">
+    <div class="stat-row" data-flat="1">
       <div class="stat-card"><p class="stat-label">Active forms</p><p class="stat-num">${st.forms}</p></div>
       <div class="stat-card"><p class="stat-label">Submissions</p><p class="stat-num">${st.submissions}</p></div>
       <div class="stat-card stat-review"><p class="stat-label">Need review</p><p class="stat-num">${st.review}</p></div>
@@ -597,7 +586,6 @@ function renderMyFormsView() {
 
   bindChrome();
   renderMyProjectList();
-  document.getElementById('new-form-btn').addEventListener('click', showNewFormModal);
   document.getElementById('form-search').addEventListener('input', (e) => {
     formSearch = e.target.value;
     renderMyProjectList();
@@ -1942,7 +1930,7 @@ async function renderUsersView() {
   card.innerHTML = `
     ${renderTopBar()}
     ${renderTabs()}
-    <h1>All users</h1>
+    <h1 data-flat="1">All users</h1>
     <p class="subtitle">Promote, disable, or remove accounts.</p>
     <div class="form-row" style="margin-bottom:16px;">
       <div>
