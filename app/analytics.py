@@ -145,4 +145,4 @@ def build_survey_analytics(project: Project, db: Session, detailed: bool = False
             bd, bc = max(per.items(), key=lambda kv: kv[1])
             overview.busiest_day = DayCount(date=bd.isoformat(), count=bc)
 
-    return SurveyAnalyticsOut(total_submissions=total, questions=questions_out, overview=overview)
+    return SurveyAnalyticsOut(form_title=project.title, form_type=project.type, total_submissions=total, questions=questions_out, overview=overview)

@@ -119,13 +119,14 @@
           <div class="an-split-yes" style="flex:${yes || 0} 1 0"></div>
           <div class="an-split-no" style="flex:${no || 0} 1 0"></div>
         </div>
+        <div class="an-yn-tiles"><div class="an-yn an-yn-yes"><b>${num(yes)}</b><span>Yes · ${yesPct}%</span></div><div class="an-yn an-yn-no"><b>${num(no)}</b><span>No · ${100 - yesPct}%</span></div></div>
         <div class="an-split-legend"><span><i class="an-dot an-dot-yes"></i>Yes · ${num(yes)} (${yesPct}%)</span><span><i class="an-dot an-dot-no"></i>No · ${num(no)} (${100 - yesPct}%)</span></div>`;
     } else if (q.option_counts && Object.keys(q.option_counts).length > 0) {
       const entries = Object.entries(q.option_counts).sort((a, b) => b[1] - a[1]);
       body = `
         ${q.top_option && q.response_count ? `<p class="an-lead">Leading: <b>${esc(splitLabel(q.top_option)[0])}</b> (${q.top_option_pct}%)</p>` : ''}
         ${rankedOptions(entries, q.response_count)}`;
-      wide = entries.length > 5;
+      wide = entries.length > 5 || entries.filter(e => e[1] > 0).length > 3;
     } else if (q.text_answers && q.text_answers.length > 0) {
       const shown = q.text_answers.slice(0, 5);
       const rest = q.text_answers.slice(5);
@@ -216,7 +217,7 @@
       ${overviewHtml(data)}
       ${hasQ
         ? `<h2 class="an-section">Question breakdown</h2><div class="an-grid">${data.questions.map(questionCard).join('')}</div>`
-        : `<div class="empty-state">${esc(emptyMessage || 'This form has no questions yet.')}</div>`}
+        : `<div class="empty-state an-empty">${esc(emptyMessage || 'This form has no questions yet.')}</div>`}
     </div>`;
   };
 

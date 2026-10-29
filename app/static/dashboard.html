@@ -700,6 +700,7 @@ function rowActionsHtml(p, canManage, extraHtml) {
   return `
     <div class="project-row-actions">
       <button class="link-btn view-submissions-btn" data-id="${p.id}">Submissions</button>
+      <button class="link-btn view-analytics-btn" data-id="${p.id}">Analytics</button>
       <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
       ${canManage ? `<button class="link-btn edit-form-btn" data-id="${p.id}">Edit</button>` : ''}
       <div class="row-menu">
@@ -778,6 +779,7 @@ function bindRowActions(list, ctx) {
     showQrModal(btn.dataset.url, btn.dataset.title);
   }));
   list.querySelectorAll('.view-submissions-btn').forEach(btn => btn.addEventListener('click', () => ctx.onSubmissions(parseInt(btn.dataset.id))));
+  list.querySelectorAll('.view-analytics-btn').forEach(btn => btn.addEventListener('click', () => ctx.onAnalytics && ctx.onAnalytics(parseInt(btn.dataset.id))));
   list.querySelectorAll('.edit-form-btn').forEach(btn => btn.addEventListener('click', () => ctx.onEdit(parseInt(btn.dataset.id))));
   list.querySelectorAll('.copy-form-btn').forEach(btn => btn.addEventListener('click', () => { closeRowMenus(); handleCopyForm(parseInt(btn.dataset.id), btn.dataset.title, ctx.refresh); }));
   list.querySelectorAll('.archive-form-btn').forEach(btn => btn.addEventListener('click', () => { closeRowMenus(); handleToggleArchive(parseInt(btn.dataset.id), btn.dataset.archived === 'true', ctx.refresh); }));
@@ -833,6 +835,7 @@ function renderMyProjectList() {
 
   bindRowActions(list, {
     onSubmissions: (id) => renderSubmissionsPage(id),
+    onAnalytics: (id) => renderAnalyticsView(id, false, () => renderMyFormsView(), 'Back to your forms'),
     onEdit: (id) => { editReturnTo = null; editReturnLabel = ''; renderEditPage(id); },
     refresh: async () => { await refreshAllLists(); renderMyFormsView(); },
   });
@@ -936,29 +939,31 @@ async function handleCreate(e) {
 
 // ---- Form detail: one page for everything about a single form ----
 
-async function renderAnalyticsView(projectId, isAdmin) {
-  const project = isAdmin ? allProjects.find(p => p.id === projectId) : myProjects.find(p => p.id === projectId);
+async function renderAnalyticsView(projectId, isAdmin, backFn, backLabel) {
+  const project = (isAdmin ? allProjects.find(p => p.id === projectId) : myProjects.find(p => p.id === projectId)) || myProjects.find(p => p.id === projectId) || allProjects.find(p => p.id === projectId);
   card.innerHTML = `${renderTopBar()}<p class="subtitle">Loading…</p>`;
 
   const endpoint = isAdmin ? `/api/admin/projects/${projectId}/analytics` : `/api/projects/${projectId}/analytics`;
   const res = await fetch(endpoint);
   const data = res.ok ? await res.json() : { total_submissions: 0, questions: [] };
 
-  const questionsHtml = renderAnalyticsCards(data, 'This form has no questions yet — add some from Edit → Questions.');
+  const formTitle = (project && project.title) || data.form_title || 'Form';
+  const questionsHtml = renderAnalyticsCards(data, 'No survey questions on this form. Add some from Edit → Questions to see a per-question breakdown here.');
 
   card.innerHTML = `
     ${renderTopBar()}
-    <button type="button" class="back-btn" id="back-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg><span>Back to submissions</span></button>
+    <button type="button" class="back-btn" id="back-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg><span>${escapeHtml(backLabel || 'Back to submissions')}</span></button>
     <div class="page-head">
       <p class="eyebrow">Analytics · ${data.total_submissions} response${data.total_submissions === 1 ? '' : 's'}</p>
-      <h1>${escapeHtml(project.title)}</h1>
+      <h1>${escapeHtml(formTitle)}</h1>
     </div>
     ${questionsHtml}
   `;
   bindAnalyticsCards(card);
 
   document.getElementById('back-link').addEventListener('click', () => {
-    if (isAdmin) renderAdminSubmissionsView(projectId);
+    if (backFn) backFn();
+    else if (isAdmin) renderAdminSubmissionsView(projectId);
     else renderSubmissionsPage(projectId);
   });
   bindChrome();
@@ -1893,6 +1898,7 @@ async function renderUserFormsView(userId, userName) {
   bindWatchCheckboxes(list);
   bindRowActions(list, {
     onSubmissions: (id) => renderAdminSubmissionsView(id),
+    onAnalytics: (id) => renderAnalyticsView(id, true, () => renderUserFormsView(userId, userName), `Back to ${userName}'s forms`),
     onEdit: (id) => {
       editReturnTo = () => renderUserFormsView(userId, userName);
       editReturnLabel = `Back to ${userName}'s forms`;

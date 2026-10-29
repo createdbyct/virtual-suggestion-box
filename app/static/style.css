@@ -1921,3 +1921,30 @@ html.auth-pending body > .card, html.auth-pending body > .page-top { visibility:
 .an-none { border-top: 0; padding-top: 0; }
 .an-grid > .an-card.an-card-wide { column-span: none; }
 .an-grid { column-fill: balance; }
+
+/* Final layout: rows of cards that always fill the width; options flow in columns inside */
+.an-grid { display: flex; flex-wrap: wrap; columns: auto; gap: 14px; align-items: stretch; }
+.an-grid > .an-card { flex: 1 1 320px; width: auto; margin: 0; min-width: 0; break-inside: auto; }
+.an-grid > .an-card.an-card-wide { flex: 1 1 100%; column-span: none; }
+.an-ranked { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 16px 24px; }
+.an-ranked > .hint { grid-column: 1 / -1; }
+.an-card .an-none-btn { align-self: flex-start; }
+.card-results .an-grid, .results-modal .an-grid { flex-direction: column; flex-wrap: nowrap; }
+.card-results .an-grid > .an-card, .results-modal .an-grid > .an-card { flex: 0 0 auto; }
+.results-modal .an-ranked, .card-results .an-ranked { grid-template-columns: 1fr; }
+.an-empty { margin-top: 14px; }
+ul.an-none { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px; }
+ul.an-none.hidden { display: none; }
+ul.an-none li { font-size: 0.84rem; background: var(--input-bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; overflow-wrap: anywhere; }
+ul.an-none li span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+.an-card .an-bars:not(.an-ranked) { gap: 9px; }
+.an-yn-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.an-yn { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 6px; border: 1px solid var(--border-strong); }
+.an-yn b { font-family: 'Fraunces', serif; font-size: 1.6rem; line-height: 1.1; }
+.an-yn span { font-size: 0.8rem; color: var(--muted); }
+.an-yn-yes { background: var(--accent-soft); border-color: var(--accent); }
+.an-yn-no { background: var(--input-bg); }
+.an-card > .an-split-legend { display: none; }
+.an-yn-tiles { flex: 1 1 auto; align-items: stretch; }
+.an-yn { justify-content: center; align-items: center; text-align: center; min-height: 84px; }
+.an-yn b { font-size: 2.2rem; }

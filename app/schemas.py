@@ -249,6 +249,8 @@ class AnalyticsOverview(BaseModel):
 
 
 class SurveyAnalyticsOut(BaseModel):
+    form_title: Optional[str] = None
+    form_type: Optional[str] = None
     total_submissions: int
     questions: List[QuestionAnalytics]
     overview: Optional[AnalyticsOverview] = None
