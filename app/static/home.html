@@ -6,6 +6,7 @@
 <title>Virtual Suggestion Box — suggestions, nominations & surveys, one link</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/style.css">
+<script>document.documentElement.classList.add('auth-pending');setTimeout(function(){document.documentElement.classList.remove('auth-pending');},1500);</script>
 <script src="/static/theme.js"></script>
 </head>
 <body data-page="home">
@@ -25,7 +26,7 @@
       <h1>One link.<br>Every idea.<br><em>Every thank-you.</em></h1>
       <p class="hx-lead">Collect suggestions, employee nominations and survey responses from anyone on your team — anonymous by default, name optional — and see it all in one dashboard.</p>
       <div class="hx-cta">
-        <a href="/register" class="hx-btn hx-btn-gold">Create your free account</a>
+        <a href="/register" class="hx-btn hx-btn-gold hx-auth-cta">Create your free account</a>
         <a href="#demo" class="hx-btn hx-btn-line">Try it first</a>
       </div>
     </div>
@@ -67,10 +68,30 @@
 <section class="hx-closing">
   <h2>Set up your first form<br>in under a minute.</h2>
   <p>Free to create — no credit card, nothing to install.</p>
-  <a href="/register" class="hx-btn hx-btn-gold">Create your free account</a>
+  <a href="/register" class="hx-btn hx-btn-gold hx-auth-cta">Create your free account</a>
 </section>
 
 <script>
+// Signed-in visitors get a way back to their forms instead of Log in / Sign up.
+(async function () {
+  try {
+    const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+    if (res.ok) {
+      const nav = document.querySelector('.hx-nav-links');
+      nav.innerHTML = `
+        <a href="#demo" class="hx-nav-demo">Try the demo</a>
+        <button type="button" class="hx-linkbtn" id="hx-logout">Log out</button>
+        <a href="/dashboard" class="hx-pill">Your forms</a>`;
+      document.getElementById('hx-logout').addEventListener('click', async () => {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        window.location.reload();
+      });
+      document.querySelectorAll('.hx-auth-cta').forEach(a => { a.href = '/dashboard'; a.textContent = 'Go to your forms'; });
+    }
+  } catch (e) { /* offline or server hiccup: leave the signed-out view */ }
+  document.documentElement.classList.remove('auth-pending');
+})();
+
 // Self-contained demo: mirrors the real submission form's UI for a 'both'
 // type form, but the submit handler never calls the API — it just shows
 // a mock confirmation. This is intentionally NOT wired to any backend

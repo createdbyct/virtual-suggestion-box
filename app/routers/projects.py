@@ -87,12 +87,13 @@ def build_submissions_csv(project: Project, submissions: list[Submission]) -> St
 
 
 def _get_owned_project_or_404(project_id: int, user: User, db: Session) -> Project:
-    """Strict owner-only access — for editing, deleting, sharing, and
-    transferring. Being a shared viewer does NOT satisfy this check."""
+    """Owner-only access — for editing, deleting, sharing, and
+    transferring. Being a shared viewer does NOT satisfy this check.
+    A superadmin may manage any user's form."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Form not found")
-    if project.owner_id != user.id:
+    if project.owner_id != user.id and user.role != "superadmin":
         raise HTTPException(status_code=403, detail="Only the owner can do that")
     return project
 
@@ -102,7 +103,7 @@ def _get_accessible_project_or_404(project_id: int, user: User, db: Session) -> 
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Form not found")
-    if project.owner_id == user.id:
+    if project.owner_id == user.id or user.role == "superadmin":
         return project
     shared = (
         db.query(ProjectShare)
@@ -503,7 +504,7 @@ def update_project(project_id: int, payload: ProjectUpdate, user: User = Depends
     db.refresh(project)
     project.submission_count = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id).scalar()
     project.new_submission_count = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id, Submission.status == "new").scalar()
-    project.is_owner = True
+    project.is_owner = project.owner_id == user.id
     return project
 
 
@@ -549,8 +550,8 @@ def add_share(project_id: int, payload: ShareIn, user: User = Depends(get_curren
     target = find_user_by_identifier(payload.identifier, db)
     if not target:
         raise HTTPException(status_code=404, detail="No account found with that email or username")
-    if target.id == user.id:
-        raise HTTPException(status_code=400, detail="You already own this form")
+    if target.id == project.owner_id:
+        raise HTTPException(status_code=400, detail="They already own this form")
 
     existing = (
         db.query(ProjectShare)
@@ -582,8 +583,9 @@ def transfer_ownership(project_id: int, payload: TransferOwnershipIn, user: User
     target = find_user_by_identifier(payload.identifier, db)
     if not target:
         raise HTTPException(status_code=404, detail="No account found with that email or username")
-    if target.id == user.id:
-        raise HTTPException(status_code=400, detail="You already own this form")
+    old_owner_id = project.owner_id  # not necessarily `user` — a superadmin can transfer anyone's form
+    if target.id == old_owner_id:
+        raise HTTPException(status_code=400, detail="They already own this form")
 
     # The new owner shouldn't also have a separate viewer-share row.
     db.query(ProjectShare).filter(
@@ -594,16 +596,16 @@ def transfer_ownership(project_id: int, payload: TransferOwnershipIn, user: User
     # into data they used to own, unless they already have it somehow.
     already_shared = (
         db.query(ProjectShare)
-        .filter(ProjectShare.project_id == project.id, ProjectShare.user_id == user.id)
+        .filter(ProjectShare.project_id == project.id, ProjectShare.user_id == old_owner_id)
         .first()
     )
     if not already_shared:
-        db.add(ProjectShare(project_id=project.id, user_id=user.id))
+        db.add(ProjectShare(project_id=project.id, user_id=old_owner_id))
 
     project.owner_id = target.id
     db.commit()
     db.refresh(project)
     project.submission_count = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id).scalar()
     project.new_submission_count = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id, Submission.status == "new").scalar()
-    project.is_owner = False
+    project.is_owner = project.owner_id == user.id
     return project

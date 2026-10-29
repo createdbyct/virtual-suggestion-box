@@ -1748,3 +1748,50 @@ a.cta-link { transition:transform .18s ease, box-shadow .18s ease, filter .18s e
 a.cta-link:hover { transform:translateY(-1px); filter:brightness(.92); box-shadow:0 6px 14px rgba(0,0,0,.14); }
 a.cta-link.cta-outline:hover { background:var(--accent-soft); filter:none; }
 button { transition:filter .15s ease, transform .15s ease, background-color .15s ease; }
+
+/* ---- Back button (replaces the old text link) ---- */
+.back-btn { display:inline-flex; align-items:center; gap:8px; min-height:44px; margin:0 0 18px; padding:0 16px 0 12px; width:auto; border:1.5px solid var(--border-strong); border-radius:var(--radius); background:var(--card); color:var(--ink); font-family:inherit; font-size:.9rem; font-weight:600; cursor:pointer; transition:background-color .15s, border-color .15s, color .15s, transform .15s; }
+.back-btn:hover { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); filter:none; }
+.back-btn:active { transform:translateY(1px); }
+.back-btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.back-btn svg { flex:none; }
+
+/* ---- Row actions menu ---- */
+.project-row-actions { align-items:center; }
+.row-menu { position:relative; display:inline-block; }
+.row-menu-btn { display:inline-flex; align-items:center; gap:6px; }
+.row-menu-btn[aria-expanded="true"] { background:var(--accent-soft); border-color:var(--accent); }
+.row-menu-btn[aria-expanded="true"] svg { transform:rotate(180deg); }
+.row-menu-btn svg { transition:transform .15s; }
+.row-menu-pop { position:absolute; top:calc(100% + 6px); left:0; z-index:30; min-width:200px; padding:6px; background:var(--card); border:1.5px solid var(--border-strong); border-radius:var(--radius); box-shadow:0 12px 28px rgba(0,0,0,.18); display:flex; flex-direction:column; gap:2px; }
+.row-menu-pop.hidden { display:none; }
+.row-menu-item { display:flex; align-items:center; width:100%; min-height:44px; padding:0 12px; margin:0; border:0; border-radius:3px; background:transparent; color:var(--ink); font-family:inherit; font-size:.92rem; font-weight:500; text-align:left; cursor:pointer; }
+.row-menu-item:hover, .row-menu-item:focus-visible { background:var(--accent-soft); filter:none; outline:none; }
+.row-menu-danger { color:var(--error); border-top:1px solid var(--border); border-radius:0 0 3px 3px; margin-top:4px; }
+.row-menu-danger:hover, .row-menu-danger:focus-visible { background:rgba(180,40,40,.08); }
+.project-row-actions .link-btn { min-width:0; }
+.project-row-actions .view-submissions-btn { min-width:116px; }
+@media (max-width:600px) {
+  .project-row-actions { gap:8px; }
+  .project-row-actions > .link-btn, .project-row-actions > .row-menu { flex:1 1 calc(50% - 8px); }
+  .project-row-actions .row-menu .link-btn { width:100%; justify-content:center; }
+  .project-row-actions .view-submissions-btn { min-width:0; }
+}
+
+/* ---- Auth-state check: avoid flashing the wrong buttons ---- */
+html.auth-pending .hx-nav-links, html.auth-pending .hx-auth-cta { visibility:hidden; }
+html.auth-pending body > .card, html.auth-pending body > .page-top { visibility:hidden; }
+.hx-linkbtn { width:auto; margin:0; padding:0 4px; min-height:44px; background:none; border:0; color:var(--hx-ink); font-family:inherit; font-size:.9rem; font-weight:500; cursor:pointer; border-radius:0; background-image:linear-gradient(var(--hx-gold),var(--hx-gold)); background-repeat:no-repeat; background-size:0 2px; background-position:0 78%; transition:background-size .2s ease, color .2s ease; white-space:nowrap; }
+.hx-linkbtn:hover { background-color:transparent; filter:none; background-size:100% 2px; color:var(--hx-gold); }
+.hx-linkbtn:focus-visible { outline:2px solid var(--hx-gold); outline-offset:3px; }
+
+/* Home on phones: one 20px gutter everywhere so every edge lines up */
+@media (max-width:720px){
+  .hx-nav { padding:20px 70px 0 20px; }
+  .hx-hero-inner { padding:36px 20px 108px; gap:36px; }
+  .hx-main { padding:0 20px; margin-top:-72px; gap:20px; }
+  .hx-panel { padding:30px 20px 10px; }
+  .hx-sample { padding:22px 20px; }
+  .hx-closing { padding:56px 20px; margin-top:40px; }
+  .hx-demo .card { padding-left:20px; padding-right:20px; }
+}

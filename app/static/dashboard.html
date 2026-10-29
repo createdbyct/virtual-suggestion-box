@@ -207,7 +207,7 @@ async function handleLogout() {
 function renderAccountView() {
   card.innerHTML = `
     ${renderTopBar()}
-    <a class="back-link" id="back-link">&larr; Back</a>
+    <button type="button" class="back-btn" id="back-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg><span>Back</span></button>
     <div class="page-head"><p class="eyebrow">Account</p><h1>Your account</h1><p class="subtitle">Manage your profile and security.</p></div>
 
     <p class="section-title">Profile</p>
@@ -565,6 +565,7 @@ function formStats() {
 
 function renderMyFormsView() {
   activeTab = 'my-forms';
+  editReturnTo = null; editReturnLabel = '';
   const st = formStats();
   card.innerHTML = `
     <div class="stat-row">
@@ -671,6 +672,118 @@ function showNewFormModal() {
   document.getElementById('create-form').addEventListener('submit', handleCreate);
 }
 
+// ---- Shared form-row actions: Submissions / Open / Edit + an "Actions" menu ----
+
+let editReturnTo = null;       // where Back / Cancel / Delete in the edit page lead
+let editReturnLabel = '';
+
+function findProject(id) {
+  return myProjects.find(p => p.id === id) || allProjects.find(p => p.id === id);
+}
+
+async function refreshAllLists() {
+  await loadMyProjects();
+  if (currentUser.role === 'admin' || currentUser.role === 'superadmin') await loadAllProjects();
+}
+
+function leaveEdit() {
+  const fn = editReturnTo;
+  editReturnTo = null;
+  editReturnLabel = '';
+  if (fn) fn(); else renderMyFormsView();
+}
+
+const ICON_CHEVRON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+
+function rowActionsHtml(p, canManage, extraHtml) {
+  const url = `${window.location.origin}/vb/${p.slug}`;
+  return `
+    <div class="project-row-actions">
+      <button class="link-btn view-submissions-btn" data-id="${p.id}">Submissions</button>
+      <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
+      ${canManage ? `<button class="link-btn edit-form-btn" data-id="${p.id}">Edit</button>` : ''}
+      <div class="row-menu">
+        <button type="button" class="link-btn row-menu-btn" aria-haspopup="menu" aria-expanded="false">Actions ${ICON_CHEVRON}</button>
+        <div class="row-menu-pop hidden" role="menu">
+          <button type="button" role="menuitem" class="row-menu-item share-link-btn" data-url="${url}">Copy link</button>
+          <button type="button" role="menuitem" class="row-menu-item qr-link-btn" data-url="${url}" data-title="${escapeAttr(p.title)}">QR code</button>
+          ${canManage ? `<button type="button" role="menuitem" class="row-menu-item copy-form-btn" data-id="${p.id}" data-title="${escapeAttr(p.title)}">Make a copy</button>` : ''}
+          ${canManage ? `<button type="button" role="menuitem" class="row-menu-item archive-form-btn" data-id="${p.id}" data-archived="${p.is_archived}">${p.is_archived ? 'Unarchive' : 'Archive'}</button>` : ''}
+          ${canManage ? `<button type="button" role="menuitem" class="row-menu-item row-menu-danger delete-form-btn" data-id="${p.id}" data-title="${escapeAttr(p.title)}">Delete…</button>` : ''}
+        </div>
+      </div>
+      ${extraHtml || ''}
+    </div>`;
+}
+
+function closeRowMenus(except) {
+  document.querySelectorAll('.row-menu-pop:not(.hidden)').forEach(pop => {
+    if (pop === except) return;
+    pop.classList.add('hidden');
+    const b = pop.parentElement.querySelector('.row-menu-btn');
+    if (b) b.setAttribute('aria-expanded', 'false');
+  });
+}
+
+if (!window.__rowMenuGlobals) {
+  window.__rowMenuGlobals = true;
+  document.addEventListener('click', (e) => { if (!e.target.closest('.row-menu')) closeRowMenus(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const open = document.querySelector('.row-menu-pop:not(.hidden)');
+    if (!open) return;
+    const btn = open.parentElement.querySelector('.row-menu-btn');
+    closeRowMenus();
+    if (btn) btn.focus();
+  });
+}
+
+// ctx: { onSubmissions(id), onEdit(id), refresh() }
+function bindRowActions(list, ctx) {
+  list.querySelectorAll('.row-menu-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const pop = btn.parentElement.querySelector('.row-menu-pop');
+      const opening = pop.classList.contains('hidden');
+      closeRowMenus(pop);
+      pop.classList.toggle('hidden', !opening);
+      btn.setAttribute('aria-expanded', String(opening));
+      if (opening) {
+        // open toward whichever side has room
+        pop.style.left = '0'; pop.style.right = 'auto';
+        const r = pop.getBoundingClientRect();
+        if (r.right > window.innerWidth - 12) { pop.style.left = 'auto'; pop.style.right = '0'; }
+        const first = pop.querySelector('.row-menu-item');
+        if (first) first.focus();
+      }
+    });
+  });
+  list.querySelectorAll('.row-menu-pop').forEach(pop => {
+    pop.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      const items = [...pop.querySelectorAll('.row-menu-item')];
+      const i = items.indexOf(document.activeElement);
+      const next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+      items[next].focus();
+    });
+  });
+  list.querySelectorAll('.share-link-btn').forEach(btn => btn.addEventListener('click', () => {
+    closeRowMenus();
+    navigator.clipboard.writeText(btn.dataset.url);
+    showToast('Link copied — ready to share');
+  }));
+  list.querySelectorAll('.qr-link-btn').forEach(btn => btn.addEventListener('click', () => {
+    closeRowMenus();
+    showQrModal(btn.dataset.url, btn.dataset.title);
+  }));
+  list.querySelectorAll('.view-submissions-btn').forEach(btn => btn.addEventListener('click', () => ctx.onSubmissions(parseInt(btn.dataset.id))));
+  list.querySelectorAll('.edit-form-btn').forEach(btn => btn.addEventListener('click', () => ctx.onEdit(parseInt(btn.dataset.id))));
+  list.querySelectorAll('.copy-form-btn').forEach(btn => btn.addEventListener('click', () => { closeRowMenus(); handleCopyForm(parseInt(btn.dataset.id), btn.dataset.title, ctx.refresh); }));
+  list.querySelectorAll('.archive-form-btn').forEach(btn => btn.addEventListener('click', () => { closeRowMenus(); handleToggleArchive(parseInt(btn.dataset.id), btn.dataset.archived === 'true', ctx.refresh); }));
+  list.querySelectorAll('.delete-form-btn').forEach(btn => btn.addEventListener('click', () => { closeRowMenus(); handleDelete(parseInt(btn.dataset.id), ctx.refresh); }));
+}
+
 function renderMyProjectList() {
   const list = document.getElementById('project-list');
   const q = formSearch.trim().toLowerCase();
@@ -713,39 +826,15 @@ function renderMyProjectList() {
             <span class="row-total"><strong>${p.submission_count}</strong> total</span>
           </div>
         </div>
-        <div class="project-row-actions">
-          <button class="link-btn view-submissions-btn" data-id="${p.id}">Submissions</button>
-          <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
-          <button class="link-btn share-link-btn" data-url="${url}">Share</button>
-          <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(p.title)}">QR</button>
-          ${p.is_owner ? `<button class="link-btn edit-form-btn" data-id="${p.id}">Edit</button>` : ''}
-          ${p.is_owner ? `<button class="link-btn copy-form-btn" data-id="${p.id}" data-title="${escapeAttr(p.title)}">Copy</button>` : ''}
-          ${p.is_owner ? `<button class="link-btn archive-form-btn" data-id="${p.id}" data-archived="${p.is_archived}">${p.is_archived ? 'Unarchive' : 'Archive'}</button>` : ''}
-        </div>
+        ${rowActionsHtml(p, p.is_owner || currentUser.role === 'superadmin')}
       </div>
     `;
   }).join('');
 
-  list.querySelectorAll('.share-link-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      navigator.clipboard.writeText(btn.dataset.url);
-      showToast('Link copied — ready to share');
-    });
-  });
-  list.querySelectorAll('.qr-link-btn').forEach(btn => {
-    btn.addEventListener('click', () => showQrModal(btn.dataset.url, btn.dataset.title));
-  });
-  list.querySelectorAll('.view-submissions-btn').forEach(btn => {
-    btn.addEventListener('click', () => renderSubmissionsPage(parseInt(btn.dataset.id)));
-  });
-  list.querySelectorAll('.edit-form-btn').forEach(btn => {
-    btn.addEventListener('click', () => renderEditPage(parseInt(btn.dataset.id)));
-  });
-  list.querySelectorAll('.copy-form-btn').forEach(btn => {
-    btn.addEventListener('click', () => handleCopyForm(parseInt(btn.dataset.id), btn.dataset.title));
-  });
-  list.querySelectorAll('.archive-form-btn').forEach(btn => {
-    btn.addEventListener('click', () => handleToggleArchive(parseInt(btn.dataset.id), btn.dataset.archived === 'true'));
+  bindRowActions(list, {
+    onSubmissions: (id) => renderSubmissionsPage(id),
+    onEdit: (id) => { editReturnTo = null; editReturnLabel = ''; renderEditPage(id); },
+    refresh: async () => { await refreshAllLists(); renderMyFormsView(); },
   });
 }
 
@@ -767,7 +856,7 @@ async function handleUseFormTemplate(projectId, title) {
   renderEditPage(newProject.id);
 }
 
-async function handleCopyForm(projectId, title) {
+async function handleCopyForm(projectId, title, refresh) {
   const res = await fetch(`/api/projects/${projectId}/copy`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -777,12 +866,11 @@ async function handleCopyForm(projectId, title) {
     alert('Could not copy that form — please try again.');
     return;
   }
-  showToast(`Copied "${title}"`);
-  await loadMyProjects();
-  renderMyFormsView();
+  showToast(`Copied "${title}" to your forms`);
+  await (refresh ? refresh() : (async () => { await refreshAllLists(); renderMyFormsView(); })());
 }
 
-async function handleToggleArchive(projectId, currentlyArchived) {
+async function handleToggleArchive(projectId, currentlyArchived, refresh) {
   const res = await fetch(`/api/projects/${projectId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -793,8 +881,7 @@ async function handleToggleArchive(projectId, currentlyArchived) {
     return;
   }
   showToast(currentlyArchived ? 'Form unarchived' : 'Form archived');
-  await loadMyProjects();
-  renderMyFormsView();
+  await (refresh ? refresh() : (async () => { await refreshAllLists(); renderMyFormsView(); })());
 }
 
 async function handleCreate(e) {
@@ -861,7 +948,7 @@ async function renderAnalyticsView(projectId, isAdmin) {
 
   card.innerHTML = `
     ${renderTopBar()}
-    <a class="back-link" id="back-link">&larr; Back to submissions</a>
+    <button type="button" class="back-btn" id="back-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg><span>Back to submissions</span></button>
     <div class="page-head">
       <p class="eyebrow">Analytics · ${data.total_submissions} response${data.total_submissions === 1 ? '' : 's'}</p>
       <h1>${escapeHtml(project.title)}</h1>
@@ -897,7 +984,7 @@ async function renderSubmissionsPage(projectId) {
 
   card.innerHTML = `
     ${renderTopBar()}
-    <a class="back-link" id="back-link">&larr; Back to your forms</a>
+    <button type="button" class="back-btn" id="back-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg><span>Back to your forms</span></button>
     <div class="page-head page-head-row">
       <div>
         <p class="eyebrow" id="submissions-count-label">Submissions</p>
@@ -968,7 +1055,7 @@ async function loadStatusCountsAndRenderPills(projectId) {
 
 async function renderEditPage(projectId, editTab) {
   editTab = editTab || 'settings';
-  const project = myProjects.find(p => p.id === projectId);
+  const project = findProject(projectId);
   card.innerHTML = `${renderTopBar()}<p class="subtitle">Loading…</p>`;
 
   const sharesRes = await fetch(`/api/projects/${projectId}/shares`);
@@ -1083,9 +1170,9 @@ async function renderEditPage(projectId, editTab) {
 
   card.innerHTML = `
     ${renderTopBar()}
-    <a class="back-link" id="back-link">&larr; Back to your forms</a>
+    <button type="button" class="back-btn" id="back-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg><span>${escapeHtml(editReturnLabel || 'Back to your forms')}</span></button>
     <div class="page-head"><p class="eyebrow">Edit form</p><h1>${escapeHtml(project.title)}</h1>
-    <p class="meta-line">${typeBadges(project.type)} <span>${url.replace(/^https?:\/\//, '')}</span></p></div>
+    <p class="meta-line">${typeBadges(project.type)} <span>${url.replace(/^https?:\/\//, '')}</span>${project.owner_id && project.owner_id !== currentUser.id ? ` <span class="badge badge-muted">Owned by ${escapeHtml(project.owner_name || project.owner_email)}</span>` : ''}</p></div>
     <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer" style="margin-bottom:4px;">Open</a>
     <button class="link-btn copy-link-btn" data-url="${url}" style="margin-bottom:4px;">Copy link</button>
     <button class="link-btn qr-link-btn" data-url="${url}" data-title="${escapeAttr(project.title)}" style="margin-bottom:14px;">QR Code to share</button>
@@ -1094,9 +1181,9 @@ async function renderEditPage(projectId, editTab) {
     ${tabContent}
   `;
 
-  document.getElementById('back-link').addEventListener('click', renderMyFormsView);
+  document.getElementById('back-link').addEventListener('click', leaveEdit);
   const cancelBtn = document.getElementById('edit-cancel-btn');
-  if (cancelBtn) cancelBtn.addEventListener('click', renderMyFormsView);
+  if (cancelBtn) cancelBtn.addEventListener('click', leaveEdit);
   document.querySelectorAll('.copy-link-btn').forEach(btn => btn.addEventListener('click', copyLinkHandler));
   document.querySelectorAll('.qr-link-btn').forEach(btn => {
     btn.addEventListener('click', () => showQrModal(btn.dataset.url, btn.dataset.title));
@@ -1576,19 +1663,22 @@ async function handleEditSave(e, projectId) {
   showToast('Changes saved');
 }
 
-async function handleDelete(projectId) {
-  const project = myProjects.find(p => p.id === projectId);
-  const confirmed = window.confirm(`Delete "${project.title}"? This permanently deletes the form and all ${project.submission_count} submission${project.submission_count === 1 ? '' : 's'} in it. This can't be undone.`);
+async function handleDelete(projectId, refresh) {
+  const project = findProject(projectId);
+  const owner = project.owner_id && project.owner_id !== currentUser.id ? ` (owned by ${project.owner_name || project.owner_email})` : '';
+  const confirmed = window.confirm(`Delete "${project.title}"${owner}? This permanently deletes the form and all ${project.submission_count} submission${project.submission_count === 1 ? '' : 's'} in it. This can't be undone.`);
   if (!confirmed) return;
 
   const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
   if (!res.ok) {
-    alert('Could not delete this form — please try again.');
+    const data = await res.json().catch(() => ({}));
+    alert(data.detail || 'Could not delete this form — please try again.');
     return;
   }
-  await loadMyProjects();
-  if (currentUser.role === 'admin' || currentUser.role === 'superadmin') await loadAllProjects();
-  renderMyFormsView();
+  showToast('Form deleted');
+  if (refresh) { await refresh(); return; }
+  await refreshAllLists();
+  leaveEdit();
 }
 
 function renderSharesList(shares, projectId) {
@@ -1692,9 +1782,8 @@ async function handleTransferOwnership(e, projectId, projectTitle) {
     return;
   }
 
-  await loadMyProjects();
-  if (currentUser.role === 'admin' || currentUser.role === 'superadmin') await loadAllProjects();
-  renderMyFormsView();
+  await refreshAllLists();
+  leaveEdit();
 }
 
 // ---- All Forms tab (admin only) ----
@@ -1706,7 +1795,7 @@ async function renderUserFormsView(userId, userName) {
   await loadAllProjects();
   card.innerHTML = `
     ${renderTopBar()}
-    <a class="back-link" id="back-link">&larr; Back to users</a>
+    <button type="button" class="back-btn" id="back-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg><span>Back to users</span></button>
     <div class="page-head page-head-row">
       <div><p class="eyebrow">Admin · Users</p><h1>${escapeHtml(userName)}'s forms</h1>
       <p class="subtitle" style="margin:0;">Every form owned by this user. Archived forms are hidden unless you show them.</p></div>
@@ -1771,15 +1860,11 @@ async function renderUserFormsView(userId, userName) {
             <span class="row-total"><strong>${p.submission_count}</strong> total</span>
           </div>
         </div>
-        <div class="project-row-actions">
-          <button class="link-btn view-admin-submissions-btn" data-id="${p.id}">Submissions</button>
-          <a class="link-btn" href="${url}" target="_blank" rel="noopener noreferrer">Open</a>
-          <span class="notify-group" aria-label="Notify me about this form">
+        ${rowActionsHtml(p, currentUser.role === 'superadmin' || p.owner_id === currentUser.id, `<span class="notify-group" aria-label="Notify me about this form">
             <span class="notify-label">Notify me</span>
             <label class="notify-opt"><input type="checkbox" class="watch-checkbox" data-id="${p.id}" data-channel="email" ${p.notify_email ? 'checked' : ''}> Email</label>
             <label class="notify-opt"><input type="checkbox" class="watch-checkbox" data-id="${p.id}" data-channel="webhook" ${p.notify_webhook ? 'checked' : ''}> Webhook</label>
-          </span>
-        </div>
+          </span>`)}
       </div>
     `;
   };
@@ -1806,8 +1891,14 @@ async function renderUserFormsView(userId, userName) {
   }
 
   bindWatchCheckboxes(list);
-  list.querySelectorAll('.view-admin-submissions-btn').forEach(btn => {
-    btn.addEventListener('click', () => renderAdminSubmissionsView(parseInt(btn.dataset.id)));
+  bindRowActions(list, {
+    onSubmissions: (id) => renderAdminSubmissionsView(id),
+    onEdit: (id) => {
+      editReturnTo = () => renderUserFormsView(userId, userName);
+      editReturnLabel = `Back to ${userName}'s forms`;
+      renderEditPage(id);
+    },
+    refresh: async () => { await refreshAllLists(); renderUserFormsView(userId, userName); },
   });
 }
 
@@ -1820,7 +1911,7 @@ async function renderAdminSubmissionsView(projectId) {
 
   card.innerHTML = `
     ${renderTopBar()}
-    <a class="back-link" id="back-link">&larr; Back to ${escapeHtml(project.owner_name || project.owner_email)}'s forms</a>
+    <button type="button" class="back-btn" id="back-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg><span>Back to ${escapeHtml(project.owner_name || project.owner_email)}'s forms</span></button>
     <div class="page-head"><p class="eyebrow">Submissions · ${submissions.length} total</p><h1>${escapeHtml(project.title)}</h1>
     <p class="meta-line">${typeBadges(project.type)} <span>Owned by ${escapeHtml(project.owner_email)}</span></p></div>
     <button class="link-btn" id="admin-export-btn" style="margin-bottom:16px;">Export CSV</button>
@@ -1987,6 +2078,7 @@ async function handleDeleteSubmission(projectId, submissionId) {
 
 async function renderUsersView() {
   activeTab = 'users';
+  editReturnTo = null; editReturnLabel = '';
   card.innerHTML = `
     ${renderTopBar()}
     ${renderTabs()}
