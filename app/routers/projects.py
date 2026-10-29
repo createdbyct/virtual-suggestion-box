@@ -476,7 +476,7 @@ def apply_survey_template(project_id: int, payload: ApplyTemplateIn, user: User 
 @router.get("/{project_id}/analytics", response_model=SurveyAnalyticsOut)
 def get_survey_analytics(project_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     project = _get_accessible_project_or_404(project_id, user, db)
-    return build_survey_analytics(project, db)
+    return build_survey_analytics(project, db, detailed=True)
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)

@@ -153,7 +153,7 @@ def get_project_analytics_admin(project_id: int, admin: User = Depends(require_a
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Form not found")
-    return build_survey_analytics(project, db)
+    return build_survey_analytics(project, db, detailed=True)
 
 
 @router.get("/users", response_model=list[UserAdminOut])

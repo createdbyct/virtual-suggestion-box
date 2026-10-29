@@ -204,11 +204,54 @@ class QuestionAnalytics(BaseModel):
     average_rating: Optional[float] = None  # rating questions only
     rating_counts: Optional[dict[str, int]] = None  # rating questions only: how many gave each 1-5
     text_answers: Optional[List[str]] = None  # short_text questions only — raw answers
+    # Additive extras (all optional so older clients keep working)
+    required: bool = False
+    skipped_count: int = 0  # submissions that left this question blank
+    response_rate: Optional[float] = None  # % of all submissions that answered
+    median_rating: Optional[float] = None
+    top_option: Optional[str] = None
+    top_option_pct: Optional[float] = None
+    avg_text_length: Optional[int] = None  # short_text: average characters
+    common_words: Optional[List[dict]] = None  # short_text: [{word, count}]
+
+
+class DayCount(BaseModel):
+    date: str
+    count: int
+
+
+class NameCount(BaseModel):
+    name: str
+    count: int
+
+
+class AnalyticsOverview(BaseModel):
+    """Form-level numbers. The public results page only gets the safe
+    subset (everything below the 'owner-only' line stays None there)."""
+    question_count: int = 0
+    avg_completion: Optional[float] = None  # % of questions answered per submission
+    first_submission_at: Optional[str] = None
+    last_submission_at: Optional[str] = None
+    # --- owner-only ---
+    anonymous_count: Optional[int] = None
+    named_count: Optional[int] = None
+    status_counts: Optional[dict[str, int]] = None
+    suggestion_count: Optional[int] = None
+    nomination_count: Optional[int] = None
+    total_nominees: Optional[int] = None
+    unique_nominees: Optional[int] = None
+    top_nominees: Optional[List[NameCount]] = None
+    last_7_days: Optional[int] = None
+    last_30_days: Optional[int] = None
+    busiest_day: Optional[DayCount] = None
+    per_day: Optional[List[DayCount]] = None  # last 30 days, zero-filled
+    by_weekday: Optional[List[int]] = None  # Mon..Sun counts
 
 
 class SurveyAnalyticsOut(BaseModel):
     total_submissions: int
     questions: List[QuestionAnalytics]
+    overview: Optional[AnalyticsOverview] = None
 
 
 class SubmissionCreate(BaseModel):
