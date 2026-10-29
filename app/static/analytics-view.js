@@ -77,8 +77,8 @@
         ${desc ? `<details class="an-desc"><summary>Full text</summary><p>${esc(desc)}</p></details>` : ''}
       </div>`;
     }).join('');
-    const noneHtml = none.length ? `<details class="an-none"><summary>${plural(none.length, 'option')} with no votes</summary>
-      <ul>${none.map(([l]) => { const [n, d] = splitLabel(l); return `<li>${esc(n)}${d ? `<span>${esc(d)}</span>` : ''}</li>`; }).join('')}</ul></details>` : '';
+    const noneHtml = none.length ? `<button type="button" class="an-none-btn" aria-expanded="false" data-n="${none.length}">Show ${plural(none.length, 'option')} with no votes</button>
+      <ul class="an-none hidden">${none.map(([l]) => { const [n, d] = splitLabel(l); return `<li>${esc(n)}${d ? `<span>${esc(d)}</span>` : ''}</li>`; }).join('')}</ul>` : '';
     return `<div class="an-bars an-ranked">${rows || '<p class="hint">No votes yet.</p>'}</div>${noneHtml}`;
   }
 
@@ -221,6 +221,15 @@
   };
 
   window.bindAnalyticsCards = function (root) {
+    root.querySelectorAll('.an-none-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const list = btn.nextElementSibling;
+        const hidden = list.classList.toggle('hidden');
+        btn.setAttribute('aria-expanded', String(!hidden));
+        const n = Number(btn.dataset.n);
+        btn.textContent = hidden ? `Show ${plural(n, 'option')} with no votes` : `Hide ${plural(n, 'option')} with no votes`;
+      });
+    });
     root.querySelectorAll('.an-more-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const more = btn.previousElementSibling;

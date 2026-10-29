@@ -1903,3 +1903,21 @@ html.auth-pending body > .card, html.auth-pending body > .page-top { visibility:
 .an-none li span { display: block; font-size: 0.78rem; color: var(--muted); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .an-panels { align-items: stretch; }
 .an-panel:not(.an-wide) { min-height: 0; }
+
+/* Fill every row: flex-wrap panels/tiles stretch, questions flow as masonry columns */
+.an-stats { display: flex; flex-wrap: wrap; }
+.an-stats > .an-stat { flex: 1 1 150px; }
+.an-panels { display: flex; flex-wrap: wrap; }
+.an-panels > .an-panel { flex: 1 1 280px; }
+.an-panels > .an-panel.an-wide { flex: 1 1 100%; }
+.an-grid { display: block; columns: 320px; column-gap: 14px; }
+.an-grid > .an-card { break-inside: avoid; margin: 0 0 14px; width: 100%; }
+.an-grid > .an-card.an-card-wide { column-span: all; }
+.card-results .an-grid, .results-modal .an-grid { columns: 1; }
+@media (max-width: 480px) { .an-stats > .an-stat { flex-basis: calc(50% - 5px); } }
+.an-none-btn { align-self: flex-start; width: auto; min-height: 40px; padding: 0 14px; margin: 4px 0 0; font-size: 0.85rem; font-weight: 600; color: var(--accent); background: var(--card); border: 1.5px solid var(--accent); border-radius: 4px; cursor: pointer; }
+.an-none-btn:hover { background: var(--accent-soft); }
+.an-none.hidden { display: none; }
+.an-none { border-top: 0; padding-top: 0; }
+.an-grid > .an-card.an-card-wide { column-span: none; }
+.an-grid { column-fill: balance; }
