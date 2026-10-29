@@ -128,3 +128,23 @@ def add_missing_columns(engine) -> list[str]:
             _log(f"added column {table_name}.{column_name}")
     _log(f"done — {len(done)} column(s) added, no existing data was modified")
     return done
+
+
+def retire_done_status(engine):
+    """The 'done' review status was retired — fold any existing 'done'
+    submissions into 'reviewed'. Idempotent; writes a safety copy first
+    only when there is something to change."""
+    with engine.begin() as conn:
+        try:
+            n = conn.execute(text("SELECT COUNT(*) FROM submissions WHERE status = 'done'")).scalar()
+        except Exception:
+            return 0
+    if not n:
+        return 0
+    backup = _safety_copy(engine)
+    if backup:
+        _log(f"retiring 'done' status — safety copy written to {backup.name}")
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE submissions SET status = 'reviewed' WHERE status = 'done'"))
+    _log(f"moved {n} 'done' submission(s) to 'reviewed'")
+    return n

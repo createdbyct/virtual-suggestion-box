@@ -1031,13 +1031,12 @@ async function renderSubmissionsPage(projectId) {
 
 async function loadStatusCountsAndRenderPills(projectId) {
   const res = await fetch(`/api/projects/${projectId}/submissions/status-counts`);
-  const counts = res.ok ? await res.json() : { new: 0, reviewed: 0, done: 0, total: 0 };
+  const counts = res.ok ? await res.json() : { new: 0, reviewed: 0, total: 0 };
 
   const pills = [
     { key: '', cssKey: 'all', label: 'All', count: counts.total },
     { key: 'new', cssKey: 'new', label: 'New', count: counts.new },
     { key: 'reviewed', cssKey: 'reviewed', label: 'Reviewed', count: counts.reviewed },
-    { key: 'done', cssKey: 'done', label: 'Done', count: counts.done },
   ];
 
   const wrap = document.getElementById('status-filter-pills');
@@ -1537,7 +1536,7 @@ function renderBulkActionsBar(projectId, isOwner) {
     <div class="bulk-actions-controls ${count === 0 ? 'hidden' : ''}">
       <span class="hint">${count} selected</span>
       <button type="button" class="link-btn bulk-status-btn" data-status="reviewed">Mark reviewed</button>
-      <button type="button" class="link-btn bulk-status-btn" data-status="done">Mark done</button>
+      <button type="button" class="link-btn bulk-status-btn" data-status="new">Mark as new</button>
       ${isOwner ? `<button type="button" class="link-btn bulk-delete-btn" style="color: var(--error); border-color: var(--error);">Delete selected</button>` : ''}
     </div>
   `;
@@ -1959,7 +1958,7 @@ function renderSubmissionList(submissions, projectId = null, isOwner = false) {
     return;
   }
 
-  const statusLabels = { new: 'New', reviewed: 'Reviewed', done: 'Done' };
+  const statusLabels = { new: 'Needs review', reviewed: 'Reviewed' };
 
   list.innerHTML = submissions.map(s => {
     const who = s.is_anonymous
@@ -2001,7 +2000,7 @@ function renderSubmissionList(submissions, projectId = null, isOwner = false) {
       </div>`;
     }
 
-    const nextStatus = { new: ['reviewed', 'Mark reviewed'], reviewed: ['done', 'Mark done'], done: ['new', 'Reopen'] }[s.status] || ['reviewed', 'Mark reviewed'];
+    const nextStatus = { new: ['reviewed', 'Mark reviewed'], reviewed: ['new', 'Mark as new'], done: ['new', 'Mark as new'] }[s.status] || ['reviewed', 'Mark reviewed'];
     const controls = projectId ? `
       <div class="sub-actions">
         <button type="button" class="${s.status === 'new' ? 'primary-btn' : 'link-btn'} status-advance-btn" data-id="${s.id}" data-next="${nextStatus[0]}">${nextStatus[1]}</button>

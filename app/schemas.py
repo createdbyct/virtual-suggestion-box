@@ -309,8 +309,10 @@ class SubmissionStatusUpdate(BaseModel):
     @field_validator("status")
     @classmethod
     def status_valid(cls, v: str) -> str:
-        if v not in ("new", "reviewed", "done"):
-            raise ValueError("status must be 'new', 'reviewed', or 'done'")
+        if v == "done":  # retired status — older clients map to reviewed
+            return "reviewed"
+        if v not in ("new", "reviewed"):
+            raise ValueError("status must be 'new' or 'reviewed'")
         return v
 
 
@@ -324,7 +326,6 @@ class SubmissionListOut(BaseModel):
 class SubmissionStatusCounts(BaseModel):
     new: int = 0
     reviewed: int = 0
-    done: int = 0
     total: int = 0
 
 

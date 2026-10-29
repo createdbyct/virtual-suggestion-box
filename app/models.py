@@ -128,7 +128,7 @@ class Submission(Base):
     survey_answers = relationship("SurveyAnswer", back_populates="submission", cascade="all, delete-orphan")
 
     __table_args__ = (
-        CheckConstraint("status IN ('new', 'reviewed', 'done')", name="ck_submission_status"),
+        CheckConstraint("status IN ('new', 'reviewed')", name="ck_submission_status"),
     )
 
 

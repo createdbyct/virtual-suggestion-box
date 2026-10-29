@@ -206,7 +206,7 @@ function addNomineeRow() {
     <span class="nominee-number">Nominee ${nomineeCount}</span>
     <input type="text" class="nominee-name" placeholder="Name">
     <input type="text" class="nominee-role" placeholder="Role (optional)">
-    <textarea class="nominee-reason" rows="3" placeholder="Why do they deserve it? Be specific — a quick story helps."></textarea>
+    <textarea class="nominee-reason" rows="3" placeholder="Why do they deserve it? (required) Be specific — a quick story helps."></textarea>
     <button type="button" class="remove-nominee" aria-label="Remove nominee"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   `;
   row.querySelector('.remove-nominee').addEventListener('click', () => {

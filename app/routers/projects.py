@@ -265,7 +265,7 @@ def get_status_counts(project_id: int, user: User = Depends(get_current_user), d
     )
     counts = SubmissionStatusCounts()
     for status, count in rows:
-        setattr(counts, status, count)
+        setattr(counts, "reviewed" if status == "done" else status, getattr(counts, "reviewed" if status == "done" else status) + count)
         counts.total += count
     return counts
 

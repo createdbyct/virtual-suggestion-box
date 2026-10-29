@@ -185,8 +185,8 @@
     if (o.status_counts && total) {
       const sc = o.status_counts;
       panels += `<div class="an-panel">
-        <div class="an-panel-head"><span class="an-panel-title">Review status</span><span class="an-panel-note">${pctOf(sc.done || 0, total)}% done</span></div>
-        ${bars([['New', sc.new || 0], ['Reviewed', sc.reviewed || 0], ['Done', sc.done || 0]], total)}
+        <div class="an-panel-head"><span class="an-panel-title">Review status</span><span class="an-panel-note">${pctOf(sc.reviewed || 0, total)}% reviewed</span></div>
+        ${bars([['Needs review', sc.new || 0], ['Reviewed', sc.reviewed || 0]], total)}
       </div>`;
     }
     if (o.suggestion_count != null && total && (o.suggestion_count || o.nomination_count)) {

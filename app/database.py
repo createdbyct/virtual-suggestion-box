@@ -39,3 +39,5 @@ def init_db():
     from .migrate import add_missing_columns
     Base.metadata.create_all(bind=engine)
     add_missing_columns(engine)
+    from .migrate import retire_done_status
+    retire_done_status(engine)

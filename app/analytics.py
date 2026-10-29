@@ -112,7 +112,7 @@ def build_survey_analytics(project: Project, db: Session, detailed: bool = False
     if detailed:
         overview.anonymous_count = sum(1 for s in submissions if s.is_anonymous)
         overview.named_count = total - overview.anonymous_count
-        overview.status_counts = {k: sum(1 for s in submissions if s.status == k) for k in ("new", "reviewed", "done")}
+        overview.status_counts = {"new": sum(1 for s in submissions if s.status == "new"), "reviewed": sum(1 for s in submissions if s.status != "new")}
         overview.suggestion_count = sum(1 for s in submissions if s.suggestion_text and s.suggestion_text.strip())
         sub_ids = [s.id for s in submissions]
         nominees = db.query(Nominee).filter(Nominee.submission_id.in_(sub_ids)).all() if sub_ids else []

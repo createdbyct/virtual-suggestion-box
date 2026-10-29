@@ -93,6 +93,12 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
         if not has_suggestion and not has_nomination:
             raise HTTPException(status_code=400, detail="Add a suggestion, a nomination, or both")
 
+    # A nomination always needs a reason for every nominee.
+    if has_nomination:
+        for n in payload.nominees:
+            if not n.reason and not payload.nomination_reason:
+                raise HTTPException(status_code=400, detail=f"Tell us why {n.name} deserves it")
+
     # Survey questions are an add-on to any form type — validate whatever
     # was submitted against this form's actual current question list.
     questions_by_id = {q.id: q for q in project.survey_questions}
