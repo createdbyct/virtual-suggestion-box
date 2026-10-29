@@ -96,7 +96,7 @@ def build_survey_analytics(project: Project, db: Session, detailed: bool = False
             if texts:
                 entry.avg_text_length = round(sum(len(t) for t in texts) / len(texts))
                 words = Counter(
-                    w for t in texts for w in re.findall(r"[a-zA-Z']{3,}", t.lower()) if w not in _STOP
+                    w for t in texts for w in re.findall(r"(?<![a-zA-Z'])[a-zA-Z']{3,24}(?![a-zA-Z'])", t.lower()) if w not in _STOP
                 )
                 entry.common_words = [{"word": w, "count": c} for w, c in words.most_common(8) if c > 1]
         questions_out.append(entry)

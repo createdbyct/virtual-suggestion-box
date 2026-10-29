@@ -51,6 +51,37 @@
     }).join('')}</div>`;
   }
 
+  // Options can be whole paragraphs ("Name - long blurb"). Show a short
+  // name up front and keep the full text one tap away (never dropped).
+  function splitLabel(label) {
+    const t = String(label || '').trim();
+    const m = t.match(/^(.{2,60}?)\s+[-\u2013\u2014:]\s+([\s\S]+)$/);
+    if (m) return [m[1].trim(), m[2].trim()];
+    if (t.length > 70) return [t.slice(0, 56).replace(/\s+\S*$/, '') + '\u2026', t];
+    return [t, ''];
+  }
+
+  function rankedOptions(entries, total) {
+    const voted = entries.filter(e => e[1] > 0);
+    const none = entries.filter(e => e[1] === 0);
+    const max = Math.max(1, ...voted.map(e => e[1]));
+    const rows = voted.map(([label, count], i) => {
+      const [name, desc] = splitLabel(label);
+      const pct = pctOf(count, total);
+      return `<div class="an-opt">
+        <div class="an-bar-top">
+          <span class="an-bar-label"><span class="an-rank">${i + 1}</span><span class="an-opt-name">${esc(name)}</span></span>
+          <span class="an-bar-count">${num(count)} <em>${pct}%</em></span>
+        </div>
+        <div class="an-bar-track"><div class="an-bar-fill" style="width:${Math.round(count / max * 100)}%"></div></div>
+        ${desc ? `<details class="an-desc"><summary>Full text</summary><p>${esc(desc)}</p></details>` : ''}
+      </div>`;
+    }).join('');
+    const noneHtml = none.length ? `<details class="an-none"><summary>${plural(none.length, 'option')} with no votes</summary>
+      <ul>${none.map(([l]) => { const [n, d] = splitLabel(l); return `<li>${esc(n)}${d ? `<span>${esc(d)}</span>` : ''}</li>`; }).join('')}</ul></details>` : '';
+    return `<div class="an-bars an-ranked">${rows || '<p class="hint">No votes yet.</p>'}</div>${noneHtml}`;
+  }
+
   function chips(items) {
     const list = items.filter(Boolean);
     return list.length ? `<div class="an-chips">${list.map(c => `<span class="an-chip">${c}</span>`).join('')}</div>` : '';
@@ -59,6 +90,7 @@
   function questionCard(q, idx) {
     let body = '';
     let extra = [];
+    let wide = false;
     if (q.response_rate != null) extra.push(`<b>${q.response_rate}%</b> answered`);
     if (q.skipped_count) extra.push(`<b>${num(q.skipped_count)}</b> skipped`);
     if (q.required) extra.push('Required');
@@ -91,8 +123,9 @@
     } else if (q.option_counts && Object.keys(q.option_counts).length > 0) {
       const entries = Object.entries(q.option_counts).sort((a, b) => b[1] - a[1]);
       body = `
-        ${q.top_option && q.response_count ? `<p class="an-lead">Most popular: <b>${esc(q.top_option)}</b> (${q.top_option_pct}%)</p>` : ''}
-        ${bars(entries, q.response_count)}`;
+        ${q.top_option && q.response_count ? `<p class="an-lead">Leading: <b>${esc(splitLabel(q.top_option)[0])}</b> (${q.top_option_pct}%)</p>` : ''}
+        ${rankedOptions(entries, q.response_count)}`;
+      wide = entries.length > 5;
     } else if (q.text_answers && q.text_answers.length > 0) {
       const shown = q.text_answers.slice(0, 5);
       const rest = q.text_answers.slice(5);
@@ -107,7 +140,7 @@
       body = `<p class="hint">No responses yet.</p>`;
     }
     return `
-      <div class="an-card">
+      <div class="an-card${wide ? ' an-card-wide' : ''}">
         <div class="an-card-head">
           <span class="an-qnum">Q${idx + 1}</span>
           <div class="an-card-title">
