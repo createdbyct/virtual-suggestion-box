@@ -1795,3 +1795,10 @@ html.auth-pending body > .card, html.auth-pending body > .page-top { visibility:
   .hx-closing { padding:56px 20px; margin-top:40px; }
   .hx-demo .card { padding-left:20px; padding-right:20px; }
 }
+
+/* Archived rows: fade the content, not the whole row — otherwise the Actions menu inherits the fade and turns see-through */
+.project-row.is-archived { opacity: 1; }
+.project-row.is-archived .project-row-main { opacity: 0.7; }
+.project-row.is-archived .project-row-actions > .link-btn,
+.project-row.is-archived .project-row-actions > .row-menu > .row-menu-btn { opacity: 0.85; }
+.project-row:has(.row-menu-pop:not(.hidden)) { position: relative; z-index: 40; }
