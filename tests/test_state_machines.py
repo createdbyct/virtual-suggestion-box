@@ -119,6 +119,27 @@ class ErrorCodeTests(unittest.TestCase):
         self.assertEqual(s.error_headers(s.ErrorCode.FORM_CLOSED), {"X-Error-Code": "form_closed"})
 
 
+class FormRoleTests(unittest.TestCase):
+    def test_ladder(self):
+        can = s.role_can
+        self.assertTrue(can("viewer", "view"))
+        self.assertFalse(can("viewer", "review"))
+        self.assertTrue(can("reviewer", "review"))
+        self.assertFalse(can("reviewer", "edit"))
+        self.assertTrue(can("editor", "edit"))
+        for cap in ("publish", "delete_data", "share", "transfer"):
+            self.assertFalse(can("editor", cap), cap)
+            self.assertTrue(can("owner", cap), cap)
+
+    def test_unknown_role_has_nothing(self):
+        self.assertFalse(s.role_can(None, "view"))
+        self.assertFalse(s.role_can("bogus", "view"))
+
+    def test_default_share_role_keeps_old_behaviour(self):
+        self.assertEqual(s.DEFAULT_SHARE_ROLE.value, "reviewer")
+        self.assertNotIn("owner", s.SHARE_ROLE_VALUES)
+
+
 class DocsStayInSyncTests(unittest.TestCase):
     def test_every_state_is_documented(self):
         doc = (ROOT / "docs" / "STATE_MACHINES.md").read_text()

@@ -12,17 +12,20 @@ import string
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from datetime import datetime
+
 from fastapi.responses import StreamingResponse
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
+from ..audit import record
 from ..auth import get_current_user, find_user_by_identifier
 from ..database import get_db
 from ..mailer import get_smtp_config, is_smtp_configured, send_email
 from ..models import Project, ProjectShare, Submission, Nominee, User, WatchedForm, SiteSettings, SurveyQuestion
 from ..schemas import (
     ProjectCreate, ProjectOut, ProjectUpdate, SubmissionOut, SubmissionListOut,
-    SubmissionStatusUpdate, SubmissionStatusCounts, ShareIn, ShareOut, TransferOwnershipIn,
+    SubmissionStatusUpdate, SubmissionStatusCounts, ShareIn, ShareOut, ShareRoleIn, TransferOwnershipIn,
     SurveyQuestionCreate, SurveyQuestionUpdate, SurveyQuestionOut, SurveyQuestionReorder,
     SurveyAnalyticsOut, SurveyTemplateOut, ApplyTemplateIn, ProjectCopyIn,
 )
@@ -30,7 +33,9 @@ from ..analytics import build_survey_analytics
 from ..survey_templates import SURVEY_TEMPLATES
 from ..webhook import send_webhook_notification, build_new_form_message
 
-from ..states import can_transition_submission
+from ..states import (
+    FORM_CAPABILITIES, ErrorCode, FormRole, SHARE_ROLE_VALUES, can_transition_submission, error_headers, role_can,
+)
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -100,21 +105,42 @@ def _get_owned_project_or_404(project_id: int, user: User, db: Session) -> Proje
     return project
 
 
-def _get_accessible_project_or_404(project_id: int, user: User, db: Session) -> Project:
-    """Owner OR a user this form has been shared with — for viewing data."""
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Form not found")
+def _my_role(project: Project, user: User, db: Session) -> str | None:
+    """The caller's role on this form: 'owner' (a superadmin counts as the
+    owner), the role they were shared in as, or None for no access."""
     if project.owner_id == user.id or user.role == "superadmin":
-        return project
+        return FormRole.OWNER.value
     shared = (
         db.query(ProjectShare)
         .filter(ProjectShare.project_id == project.id, ProjectShare.user_id == user.id)
         .first()
     )
-    if not shared:
-        raise HTTPException(status_code=403, detail="You don't have access to this form")
+    return shared.role if shared else None
+
+
+def _get_project_with(capability: str, project_id: int, user: User, db: Session) -> Project:
+    """Loads the form and checks the caller's role allows `capability`
+    (see states.FORM_CAPABILITIES). Sets project.my_role for the response."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Form not found")
+    role = _my_role(project, user, db)
+    if role is None:
+        # Same answer as "doesn't exist", so form ids can't be probed.
+        raise HTTPException(status_code=404, detail="Form not found")
+    if not role_can(role, capability):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your access to this form is '{role}' — that needs {FORM_CAPABILITIES[capability].value} access",
+            headers=error_headers(ErrorCode.INSUFFICIENT_ROLE),
+        )
+    project.my_role = role
     return project
+
+
+def _get_accessible_project_or_404(project_id: int, user: User, db: Session) -> Project:
+    """Owner OR anyone this form has been shared with — for viewing data."""
+    return _get_project_with("view", project_id, user, db)
 
 
 def _fire_new_form_notification(project: Project, user: User, background_tasks: BackgroundTasks, db: Session):
@@ -163,6 +189,7 @@ def create_project(payload: ProjectCreate, background_tasks: BackgroundTasks, us
     project.submission_count = 0
     project.new_submission_count = 0
     project.is_owner = True
+    project.my_role = "owner"
     return project
 
 
@@ -214,6 +241,7 @@ def copy_project(
     new_project.submission_count = 0
     new_project.new_submission_count = 0
     new_project.is_owner = True
+    new_project.my_role = "owner"
     return new_project
 
 
@@ -228,22 +256,24 @@ def list_my_projects(include_archived: bool = False, user: User = Depends(get_cu
         owned_q = owned_q.filter(Project.is_archived.is_(False))
     owned_rows = owned_q.group_by(Project.id).all()
 
-    shared_q = db.query(Project, func.count(Submission.id).label("submission_count"), new_count_expr.label("new_count"), User.name) \
+    shared_q = db.query(Project, func.count(Submission.id).label("submission_count"), new_count_expr.label("new_count"), User.name, ProjectShare.role) \
         .join(ProjectShare, ProjectShare.project_id == Project.id) \
         .join(User, Project.owner_id == User.id) \
         .outerjoin(Submission, Submission.project_id == Project.id) \
         .filter(ProjectShare.user_id == user.id)
     if not include_archived:
         shared_q = shared_q.filter(Project.is_archived.is_(False))
-    shared_rows = shared_q.group_by(Project.id).all()
+    shared_rows = shared_q.group_by(Project.id, ProjectShare.role).all()
 
     result = []
     for project, count, new_count in owned_rows:
         project.submission_count = count
         project.new_submission_count = new_count or 0
         project.is_owner = True
+        project.my_role = "owner"
         result.append(project)
-    for project, count, new_count, owner_name in shared_rows:
+    for project, count, new_count, owner_name, share_role in shared_rows:
+        project.my_role = share_role
         project.submission_count = count
         project.new_submission_count = new_count or 0
         project.is_owner = False
@@ -316,15 +346,22 @@ def update_submission_status(
     project_id: int, submission_id: int, payload: SubmissionStatusUpdate,
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    # Accessible (owner or shared viewer) rather than owner-only — triaging
-    # submissions is collaborative review, not a form-management action.
-    project = _get_accessible_project_or_404(project_id, user, db)
+    # Reviewer or above — triaging is collaborative review, not a
+    # form-management action, but a read-only viewer can't do it.
+    project = _get_project_with("review", project_id, user, db)
     submission = db.query(Submission).filter(Submission.id == submission_id, Submission.project_id == project.id).first()
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
     if not can_transition_submission(submission.status, payload.status):
         raise HTTPException(status_code=409, detail=f"Can't move a '{submission.status}' response to '{payload.status}'")
-    submission.status = payload.status
+    if submission.status != payload.status:
+        submission.status = payload.status
+        if payload.status == "reviewed":
+            submission.reviewed_by_id = user.id
+            submission.reviewed_at = datetime.utcnow()
+        else:  # back to "needs review" clears the stamp
+            submission.reviewed_by_id = None
+            submission.reviewed_at = None
     db.commit()
     db.refresh(submission)
     return submission
@@ -341,6 +378,7 @@ def delete_submission(
     submission = db.query(Submission).filter(Submission.id == submission_id, Submission.project_id == project.id).first()
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
+    record(db, user, "response_deleted", "response", submission.id, f"on form #{project.id} {project.title}")
     db.delete(submission)
     db.commit()
     return {"status": "deleted"}
@@ -361,7 +399,7 @@ def list_questions(project_id: int, user: User = Depends(get_current_user), db: 
 
 @router.post("/{project_id}/questions", response_model=SurveyQuestionOut)
 def create_question(project_id: int, payload: SurveyQuestionCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    project = _get_owned_project_or_404(project_id, user, db)
+    project = _get_project_with("edit", project_id, user, db)
     max_order = db.query(func.max(SurveyQuestion.display_order)).filter(SurveyQuestion.project_id == project.id).scalar()
     question = SurveyQuestion(
         project_id=project.id,
@@ -382,7 +420,7 @@ def update_question(
     project_id: int, question_id: int, payload: SurveyQuestionUpdate,
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    project = _get_owned_project_or_404(project_id, user, db)
+    project = _get_project_with("edit", project_id, user, db)
     question = db.query(SurveyQuestion).filter(SurveyQuestion.id == question_id, SurveyQuestion.project_id == project.id).first()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
@@ -411,7 +449,7 @@ def update_question(
 
 @router.delete("/{project_id}/questions/{question_id}")
 def delete_question(project_id: int, question_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    project = _get_owned_project_or_404(project_id, user, db)
+    project = _get_project_with("edit", project_id, user, db)
     question = db.query(SurveyQuestion).filter(SurveyQuestion.id == question_id, SurveyQuestion.project_id == project.id).first()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
@@ -422,7 +460,7 @@ def delete_question(project_id: int, question_id: int, user: User = Depends(get_
 
 @router.post("/{project_id}/questions/reorder")
 def reorder_questions(project_id: int, payload: SurveyQuestionReorder, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    project = _get_owned_project_or_404(project_id, user, db)
+    project = _get_project_with("edit", project_id, user, db)
     questions = {q.id: q for q in project.survey_questions}
 
     if set(payload.question_ids) != set(questions.keys()):
@@ -451,7 +489,7 @@ def apply_survey_template(project_id: int, payload: ApplyTemplateIn, user: User 
     exist — never replaces or deduplicates, so applying the same
     template twice just adds it twice. That's a deliberate, simple
     default; if a person wants a clean slate they can delete first."""
-    project = _get_owned_project_or_404(project_id, user, db)
+    project = _get_project_with("edit", project_id, user, db)
     template = SURVEY_TEMPLATES.get(payload.template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -485,7 +523,21 @@ def get_survey_analytics(project_id: int, user: User = Depends(get_current_user)
 
 @router.patch("/{project_id}", response_model=ProjectOut)
 def update_project(project_id: int, payload: ProjectUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    project = _get_owned_project_or_404(project_id, user, db)
+    project = _get_project_with("edit", project_id, user, db)
+
+    # Editors can change a form's details but not how it's published: archive,
+    # template and public-results changes stay with the owner. Sending the
+    # unchanged value is fine (the edit form always submits every field).
+    if not role_can(project.my_role, "publish"):
+        for field, current in (("is_archived", project.is_archived), ("is_template", project.is_template),
+                               ("public_analytics", project.public_analytics)):
+            new = getattr(payload, field)
+            if new is not None and bool(new) != bool(current):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Only the owner can change archive, template or public-results settings",
+                    headers=error_headers(ErrorCode.INSUFFICIENT_ROLE),
+                )
 
     if payload.title is not None:
         project.title = payload.title
@@ -509,12 +561,14 @@ def update_project(project_id: int, payload: ProjectUpdate, user: User = Depends
     project.submission_count = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id).scalar()
     project.new_submission_count = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id, Submission.status == "new").scalar()
     project.is_owner = project.owner_id == user.id
+    project.my_role = "owner" if project.is_owner else _my_role(project, user, db)
     return project
 
 
 @router.delete("/{project_id}")
 def delete_project(project_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     project = _get_owned_project_or_404(project_id, user, db)
+    record(db, user, "form_deleted", "form", project.id, project.title)
     db.delete(project)  # cascades to submissions, nominees, and shares
     db.commit()
     return {"status": "deleted"}
@@ -534,17 +588,21 @@ def export_csv(project_id: int, user: User = Depends(get_current_user), db: Sess
 
 # ---- Sharing & ownership (owner only) ----
 
+def _share_out(target: User, role: str) -> ShareOut:
+    return ShareOut(user_id=target.id, name=target.name, username=target.username, email=target.email, role=role)
+
+
 @router.get("/{project_id}/shares", response_model=list[ShareOut])
 def list_shares(project_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     project = _get_owned_project_or_404(project_id, user, db)
-    users = (
-        db.query(User)
+    rows = (
+        db.query(User, ProjectShare.role)
         .join(ProjectShare, ProjectShare.user_id == User.id)
         .filter(ProjectShare.project_id == project.id)
         .order_by(User.name)
         .all()
     )
-    return [ShareOut(user_id=u.id, name=u.name, username=u.username, email=u.email) for u in users]
+    return [_share_out(u, role) for u, role in rows]
 
 
 @router.post("/{project_id}/shares", response_model=ShareOut)
@@ -563,19 +621,36 @@ def add_share(project_id: int, payload: ShareIn, user: User = Depends(get_curren
         .first()
     )
     if existing:
-        raise HTTPException(status_code=400, detail="This person already has access")
+        raise HTTPException(status_code=400, detail="This person already has access — change their role instead")
 
-    db.add(ProjectShare(project_id=project.id, user_id=target.id))
+    db.add(ProjectShare(project_id=project.id, user_id=target.id, role=payload.role))
+    record(db, user, "share_added", "form", project.id, f"@{target.username} as {payload.role} on {project.title}")
     db.commit()
-    return ShareOut(user_id=target.id, name=target.name, username=target.username, email=target.email)
+    return _share_out(target, payload.role)
+
+
+@router.patch("/{project_id}/shares/{user_id}", response_model=ShareOut)
+def change_share_role(project_id: int, user_id: int, payload: ShareRoleIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    project = _get_owned_project_or_404(project_id, user, db)
+    share = db.query(ProjectShare).filter(ProjectShare.project_id == project.id, ProjectShare.user_id == user_id).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="That person doesn't have access to this form")
+    target = db.query(User).filter(User.id == user_id).first()
+    record(db, user, "share_role_changed", "form", project.id, f"@{target.username if target else user_id}: {share.role} -> {payload.role} on {project.title}")
+    share.role = payload.role
+    db.commit()
+    return _share_out(target, share.role)
 
 
 @router.delete("/{project_id}/shares/{user_id}")
 def remove_share(project_id: int, user_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     project = _get_owned_project_or_404(project_id, user, db)
-    db.query(ProjectShare).filter(
+    removed = db.query(ProjectShare).filter(
         ProjectShare.project_id == project.id, ProjectShare.user_id == user_id
     ).delete()
+    if removed:
+        gone = db.query(User).filter(User.id == user_id).first()
+        record(db, user, "share_removed", "form", project.id, f"@{gone.username if gone else user_id} on {project.title}")
     db.commit()
     return {"status": "removed"}
 
@@ -604,12 +679,14 @@ def transfer_ownership(project_id: int, payload: TransferOwnershipIn, user: User
         .first()
     )
     if not already_shared:
-        db.add(ProjectShare(project_id=project.id, user_id=old_owner_id))
+        db.add(ProjectShare(project_id=project.id, user_id=old_owner_id, role="reviewer"))
 
+    record(db, user, "ownership_transferred", "form", project.id, f"{project.title}: to @{target.username}")
     project.owner_id = target.id
     db.commit()
     db.refresh(project)
     project.submission_count = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id).scalar()
     project.new_submission_count = db.query(func.count(Submission.id)).filter(Submission.project_id == project.id, Submission.status == "new").scalar()
     project.is_owner = project.owner_id == user.id
+    project.my_role = "owner" if project.is_owner else _my_role(project, user, db)
     return project

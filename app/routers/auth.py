@@ -32,6 +32,7 @@ from ..schemas import (
     ForgotPasswordIn, ForgotPasswordOut, ResetPasswordIn, ResetPasswordTokenInfo,
     SessionOut,
 )
+from ..audit import record
 from ..states import (
     ErrorCode, LinkState, TwoFactorState, error_headers, reset_link_state, two_factor_allows, two_factor_state,
 )
@@ -334,6 +335,8 @@ def change_password(
     if payload.current_password == payload.new_password:
         raise HTTPException(status_code=400, detail="Choose a password different from your current one")
     user.password_hash = hash_password(payload.new_password)
+    user.must_change_password = False
+    record(db, user, "password_changed", "user", user.id)
     db.commit()
     destroy_all_sessions_for_user(db, user.id, except_token=session_token)
     return {"status": "changed"}

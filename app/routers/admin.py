@@ -6,6 +6,7 @@ password). Superadmin-only: full data export/import (see bottom of file).
 import datetime
 import json
 import secrets
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -13,18 +14,20 @@ from fastapi.responses import Response
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
+from ..audit import record
 from ..auth import destroy_all_sessions_for_user, hash_password, require_admin, require_superadmin
 from ..backup import build_backup_dict, restore_backup_dict
+from ..backup_job import DEFAULT_DIR, check_destination, run_and_record
 from ..database import get_db
 from ..models import (
-    Project, ProjectShare, Submission, Nominee, RecoveryCode,
+    AuditLog, Project, ProjectShare, Submission, Nominee, RecoveryCode,
     SiteSettings, WatchedForm, AuthSession, PasswordResetToken, User,
 )
 from .projects import build_submissions_csv
 from ..analytics import build_survey_analytics
 from ..schemas import (
     ProjectAdminOut, SubmissionOut, UserAdminOut, UserUpdateIn,
-    AdminResetPasswordOut, SiteSettingsAdminOut, SurveyAnalyticsOut,
+    AdminResetPasswordOut, AuditLogOut, BackupScheduleIn, BackupScheduleOut, SiteSettingsAdminOut, SurveyAnalyticsOut,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -156,6 +159,18 @@ def get_project_analytics_admin(project_id: int, admin: User = Depends(require_a
     return build_survey_analytics(project, db, detailed=True)
 
 
+@router.get("/audit-log", response_model=list[AuditLogOut])
+def get_audit_log(
+    limit: int = 100, offset: int = 0, action: Optional[str] = None,
+    superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db),
+):
+    """Newest first. Superadmin only — it names who changed whose access."""
+    q = db.query(AuditLog)
+    if action:
+        q = q.filter(AuditLog.action == action)
+    return q.order_by(AuditLog.id.desc()).offset(max(offset, 0)).limit(min(max(limit, 1), 500)).all()
+
+
 @router.get("/users", response_model=list[UserAdminOut])
 def list_users(
     organization: Optional[str] = None,
@@ -204,6 +219,11 @@ def update_user(user_id: int, payload: UserUpdateIn, admin: User = Depends(requi
         if payload.is_active is False:
             raise HTTPException(status_code=400, detail="You can't disable your own account")
 
+    changes = []
+    if payload.role is not None and payload.role != target.role:
+        changes.append(f"role {target.role} -> {payload.role}")
+    if payload.is_active is not None and payload.is_active != target.is_active:
+        changes.append("enabled" if payload.is_active else "disabled")
     if payload.role is not None:
         target.role = payload.role
     if payload.is_active is not None:
@@ -213,6 +233,8 @@ def update_user(user_id: int, payload: UserUpdateIn, admin: User = Depends(requi
     if "department" in payload.model_fields_set:
         target.department = payload.department
 
+    if changes:
+        record(db, admin, "user_updated", "user", target.id, f"@{target.username}: " + ", ".join(changes))
     db.commit()
     db.refresh(target)
     target.project_count = db.query(func.count(Project.id)).filter(Project.owner_id == target.id).scalar()
@@ -231,6 +253,7 @@ def delete_user(user_id: int, admin: User = Depends(require_admin), db: Session 
     if target.role == "superadmin" and admin.role != "superadmin":
         raise HTTPException(status_code=403, detail="Only a super admin can delete a super admin account")
 
+    record(db, admin, "user_deleted", "user", target.id, f"@{target.username}")
     db.delete(target)  # cascades to their projects, submissions, and nominees
     db.commit()
     return {"status": "deleted"}
@@ -250,7 +273,9 @@ def admin_reset_password(user_id: int, admin: User = Depends(require_admin), db:
 
     temp_password = secrets.token_urlsafe(9)  # ~12 readable chars
     target.password_hash = hash_password(temp_password)
+    target.must_change_password = True  # they must pick their own at next sign-in
     destroy_all_sessions_for_user(db, target.id)
+    record(db, admin, "password_reset_by_admin", "user", target.id, f"for @{target.username}")
     db.commit()
     return AdminResetPasswordOut(temporary_password=temp_password)
 
@@ -278,12 +303,68 @@ def admin_reset_password(user_id: int, admin: User = Depends(require_admin), db:
 # they're short-lived by design, and forcing a fresh login after a
 # restore is expected, not a bug.
 
+def _schedule_out(s: SiteSettings) -> BackupScheduleOut:
+    directory = s.backup_dir or DEFAULT_DIR
+    try:
+        files = sorted((p.name for p in Path(directory).expanduser().glob("backup-*.json")), reverse=True)[:5]
+    except OSError:
+        files = []
+    return BackupScheduleOut(
+        enabled=bool(s.backup_enabled), hour=s.backup_hour if s.backup_hour is not None else 2,
+        keep=s.backup_keep or 14, directory=directory, copy_dir=s.backup_copy_dir,
+        rclone=s.backup_rclone, rsync=s.backup_rsync, last_ok_at=s.backup_last_ok_at,
+        last_attempt_at=s.backup_last_attempt_at, last_error=s.backup_last_error,
+        server_time=datetime.datetime.now().astimezone().strftime("%H:%M %Z"), recent_files=files,
+    )
+
+
+@router.get("/backup-schedule", response_model=BackupScheduleOut)
+def get_backup_schedule(superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    return _schedule_out(_get_or_create_settings(db))
+
+
+@router.put("/backup-schedule", response_model=BackupScheduleOut)
+def set_backup_schedule(payload: BackupScheduleIn, superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    """Saves the built-in backup schedule. Folders are test-written first, so a
+    typo or an unplugged USB stick is caught now rather than at 2am."""
+    s = _get_or_create_settings(db)
+    directory = payload.directory or DEFAULT_DIR
+    for label, folder in (("Backup folder", directory), ("Second folder", payload.copy_dir)):
+        if folder:
+            problem = check_destination(folder)
+            if problem:
+                raise HTTPException(status_code=400, detail=f"{label}: {problem}")
+    s.backup_enabled, s.backup_hour, s.backup_keep = payload.enabled, payload.hour, payload.keep
+    s.backup_dir = None if directory == DEFAULT_DIR else directory
+    s.backup_copy_dir, s.backup_rclone, s.backup_rsync = payload.copy_dir, payload.rclone, payload.rsync
+    record(db, superadmin, "backup_settings_changed", detail=(
+        f"{'on, daily at %02d:00' % payload.hour if payload.enabled else 'off'}, keep {payload.keep}"))
+    db.commit()
+    return _schedule_out(s)
+
+
+@router.post("/backup-now", response_model=BackupScheduleOut)
+def backup_now(superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
+    """Runs a backup right now with the saved folders (saved on this machine,
+    not downloaded — use Export for a download)."""
+    s = _get_or_create_settings(db)
+    try:
+        run_and_record(db, s)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Backup failed: {e}")
+    record(db, superadmin, "backup_run_now")
+    db.commit()
+    db.refresh(s)
+    return _schedule_out(s)
+
+
 @router.get("/export")
 def export_data(superadmin: User = Depends(require_superadmin), db: Session = Depends(get_db)):
     data = build_backup_dict(db)
 
     settings = _get_or_create_settings(db)
     settings.last_backup_at = datetime.datetime.utcnow()
+    record(db, superadmin, "backup_exported")
     db.commit()
 
     filename = f"virtual-suggestion-box-backup-{datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.json"
@@ -300,4 +381,8 @@ def import_data(payload: dict = Body(...), superadmin: User = Depends(require_su
         counts = restore_backup_dict(db, payload)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # The restore replaced every account, so the actor may no longer exist —
+    # record who did it in the text instead of a foreign key.
+    record(db, None, "backup_restored", detail=f"by @{superadmin.username}")
+    db.commit()
     return {"status": "imported", **counts}

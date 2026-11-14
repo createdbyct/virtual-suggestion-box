@@ -143,6 +143,30 @@ Five failures lock that IP + identifier for 15 minutes. The counter lives in the
 
 ---
 
+## 9. Form access roles
+
+Who can do what on a form. Defined in `app/states.py` (`FORM_CAPABILITIES`); every endpoint asks for a *capability*, never a role name, so the table below is the single source of truth. Roles are ranked `viewer` < `reviewer` < `editor` < `owner`. A superadmin counts as `owner` everywhere. Shares created before roles existed became `reviewer` — exactly what they could already do.
+
+| Capability | `viewer` | `reviewer` | `editor` | `owner` |
+|---|---|---|---|---|
+| `view` — read responses, analytics, export CSV | yes | yes | yes | yes |
+| `review` — mark responses reviewed / needs review | | yes | yes | yes |
+| `edit` — change title, description, questions, expiry | | | yes | yes |
+| `publish` — archive, template, public results | | | | yes |
+| `delete_data` — delete responses | | | | yes |
+| `share` — add/remove people, change roles | | | | yes |
+| `transfer` — hand the form to someone else | | | | yes |
+
+Marking a response reviewed records who did it and when ("Reviewed by …"). Moving it back to needs-review clears the stamp. A forbidden action returns 403 with `X-Error-Code: insufficient_role`.
+
+## Temporary passwords
+
+When an admin resets someone's password the account gets `must_change_password`. Until the person chooses their own, every request except `/api/auth/me`, `/api/auth/change-password` and `/api/auth/logout` is refused with `password_change_required`, and the dashboard shows only a "Choose a new password" screen. Changing the password clears it. Reset-by-email links don't set it — the person already chose their own password there.
+
+## Audit log
+
+`audit_log` records who changed access, deleted data, reset passwords, transferred a form or exported/restored a backup (`app/audit.py`). Superadmin-only viewer: Site Settings -> Activity, or `GET /api/admin/audit-log`. Entries keep the actor's name as text so they still read correctly after an account is deleted, and never contain passwords or response text.
+
 ## Error codes
 
 Sent as the `X-Error-Code` response header. The human-readable `detail` text is unchanged.
@@ -155,6 +179,8 @@ Sent as the `X-Error-Code` response header. The human-readable `detail` text is 
 | `2fa_required` | login — ask for the code |
 | `2fa_rejected` | login — wrong code |
 | `2fa_already_on` | 2FA setup while already on |
+| `password_change_required` | any request while an admin-issued temporary password is still active (403) |
+| `insufficient_role` | any form action — your role does not allow it (403) |
 | `wrong_password` | change password — current password incorrect |
 | `form_closed` | submitting to an expired form |
 | `link_expired` | response view link |

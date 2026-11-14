@@ -1,9 +1,11 @@
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .backup_job import scheduler_loop
 from .database import init_db
 from .routers import public, auth, projects, admin, settings
 
@@ -13,8 +15,17 @@ app = FastAPI(title="Virtual Suggestion Box")
 
 
 @app.on_event("startup")
-def on_startup():
+async def on_startup():
     init_db()
+    # Built-in scheduled backups (configured in Site Settings -> Backups).
+    app.state.backup_task = asyncio.create_task(scheduler_loop())
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    task = getattr(app.state, "backup_task", None)
+    if task:
+        task.cancel()
 
 
 app.include_router(public.router)

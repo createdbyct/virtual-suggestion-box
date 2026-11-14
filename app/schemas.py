@@ -8,7 +8,8 @@ from typing import List, Optional
 from pydantic import BaseModel, EmailStr, computed_field, field_validator, model_validator
 
 from .states import (
-    form_accepts_responses, form_state, next_submission_statuses, parse_submission_status,
+    DEFAULT_SHARE_ROLE, SHARE_ROLE_VALUES, capabilities_for, form_accepts_responses, form_state,
+    next_submission_statuses, parse_submission_status,
 )
 
 
@@ -302,6 +303,8 @@ class SubmissionOut(BaseModel):
     is_anonymous: bool
     status: str
     created_at: datetime
+    reviewed_at: Optional[datetime] = None
+    reviewed_by_name: Optional[str] = None
 
     @computed_field
     @property
@@ -402,6 +405,7 @@ class UserOut(BaseModel):
     email: str
     role: str
     totp_enabled: bool
+    must_change_password: bool = False
     organization: Optional[str] = None
     department: Optional[str] = None
 
@@ -661,6 +665,7 @@ class ProjectOut(BaseModel):
     submission_count: int = 0
     new_submission_count: int = 0
     is_owner: bool = True
+    my_role: str = "owner"  # owner | editor | reviewer | viewer
     owner_name: Optional[str] = None  # populated only for forms shared with you
 
     @computed_field
@@ -668,6 +673,12 @@ class ProjectOut(BaseModel):
     def state(self) -> str:
         """'active' | 'archived' | 'expired' — see app/states.py."""
         return form_state(self.is_archived, self.expires_at).value
+
+    @computed_field
+    @property
+    def my_capabilities(self) -> List[str]:
+        """What the caller may do on this form — view/review/edit/… (states.FORM_CAPABILITIES)."""
+        return capabilities_for(self.my_role)
 
     @computed_field
     @property
@@ -680,6 +691,25 @@ class ProjectOut(BaseModel):
 
 class ShareIn(BaseModel):
     identifier: str  # email or username of the person to share with
+    role: str = DEFAULT_SHARE_ROLE.value  # viewer | reviewer | editor
+
+    @field_validator("role")
+    @classmethod
+    def valid_role(cls, v: str) -> str:
+        if v not in SHARE_ROLE_VALUES:
+            raise ValueError(f"role must be one of: {', '.join(SHARE_ROLE_VALUES)}")
+        return v
+
+
+class ShareRoleIn(BaseModel):
+    role: str
+
+    @field_validator("role")
+    @classmethod
+    def valid_role(cls, v: str) -> str:
+        if v not in SHARE_ROLE_VALUES:
+            raise ValueError(f"role must be one of: {', '.join(SHARE_ROLE_VALUES)}")
+        return v
 
 
 class ShareOut(BaseModel):
@@ -687,6 +717,7 @@ class ShareOut(BaseModel):
     name: str
     username: str
     email: str
+    role: str = DEFAULT_SHARE_ROLE.value
 
 
 class TransferOwnershipIn(BaseModel):
@@ -743,3 +774,63 @@ class ProjectAdminOut(ProjectOut):
     owner_email: str
     notify_email: bool = False
     notify_webhook: bool = False
+
+
+class AuditLogOut(BaseModel):
+    id: int
+    created_at: datetime
+    actor_name: Optional[str] = None
+    action: str
+    target_type: Optional[str] = None
+    target_id: Optional[int] = None
+    detail: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class BackupScheduleIn(BaseModel):
+    enabled: bool
+    hour: int = 2
+    keep: int = 14
+    directory: Optional[str] = None
+    copy_dir: Optional[str] = None
+    rclone: Optional[str] = None
+    rsync: Optional[str] = None
+
+    @field_validator("hour")
+    @classmethod
+    def valid_hour(cls, v: int) -> int:
+        if not 0 <= v <= 23:
+            raise ValueError("hour must be 0-23")
+        return v
+
+    @field_validator("keep")
+    @classmethod
+    def valid_keep(cls, v: int) -> int:
+        if not 1 <= v <= 365:
+            raise ValueError("keep must be between 1 and 365")
+        return v
+
+    @field_validator("directory", "copy_dir", "rclone", "rsync")
+    @classmethod
+    def clean(cls, v):
+        v = (v or "").strip()
+        if v.startswith("-"):
+            raise ValueError("can't start with '-'")
+        return v or None
+
+
+class BackupScheduleOut(BaseModel):
+    enabled: bool
+    hour: int
+    keep: int
+    directory: str
+    copy_dir: Optional[str] = None
+    rclone: Optional[str] = None
+    rsync: Optional[str] = None
+    last_ok_at: Optional[datetime] = None
+    last_attempt_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+    server_time: str          # e.g. "13:05 CST" — the hour above is in this clock
+    recent_files: List[str] = []

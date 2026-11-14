@@ -168,6 +168,58 @@ def role_at_least(role: str, minimum: Role) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# 4b. Form access roles  (project_shares.role; the owner is implicit)
+#
+#   viewer    read submissions, analytics, export CSV
+#   reviewer  viewer + mark responses reviewed / needs review
+#   editor    reviewer + edit the form's details and questions
+#   owner     everything, incl. deleting data/the form, sharing, transferring
+#
+# Each role includes everything below it. Existing shares from before roles
+# existed behave as "reviewer" — exactly what they could already do.
+# ---------------------------------------------------------------------------
+class FormRole(StrEnum):
+    VIEWER = "viewer"
+    REVIEWER = "reviewer"
+    EDITOR = "editor"
+    OWNER = "owner"
+
+
+SHARE_ROLE_VALUES = (FormRole.VIEWER.value, FormRole.REVIEWER.value, FormRole.EDITOR.value)  # grantable
+DEFAULT_SHARE_ROLE = FormRole.REVIEWER  # also what pre-roles shares migrate to
+_FORM_ROLE_RANK = {FormRole.VIEWER: 0, FormRole.REVIEWER: 1, FormRole.EDITOR: 2, FormRole.OWNER: 3}
+
+# capability -> minimum role
+FORM_CAPABILITIES: Dict[str, FormRole] = {
+    "view": FormRole.VIEWER,          # submissions, analytics, questions, CSV
+    "review": FormRole.REVIEWER,      # change a response's review status
+    "edit": FormRole.EDITOR,          # form details, questions, templates
+    "delete_data": FormRole.OWNER,    # delete responses / the form
+    "share": FormRole.OWNER,          # manage who has access
+    "transfer": FormRole.OWNER,
+    "publish": FormRole.OWNER,        # archive, template flag, public analytics
+}
+
+
+def parse_form_role(value: str) -> FormRole:
+    try:
+        return FormRole(value)
+    except ValueError:
+        raise ValueError(f"role must be one of: {', '.join(SHARE_ROLE_VALUES)}")
+
+
+def role_can(role: str, capability: str) -> bool:
+    try:
+        return _FORM_ROLE_RANK[FormRole(role)] >= _FORM_ROLE_RANK[FORM_CAPABILITIES[capability]]
+    except (ValueError, KeyError):
+        return False
+
+
+def capabilities_for(role: str) -> list[str]:
+    return [c for c in FORM_CAPABILITIES if role_can(role, c)]
+
+
+# ---------------------------------------------------------------------------
 # 5. Single-use links  (password_reset_tokens.used + expires_at)
 # ---------------------------------------------------------------------------
 class LinkState(StrEnum):
@@ -223,6 +275,8 @@ class ErrorCode(StrEnum):
     LINK_INVALID = "link_invalid"
     TWO_FACTOR_ALREADY_ON = "2fa_already_on"
     WRONG_PASSWORD = "wrong_password"
+    INSUFFICIENT_ROLE = "insufficient_role"
+    PASSWORD_CHANGE_REQUIRED = "password_change_required"
 
 
 ERROR_CODE_HEADER = "X-Error-Code"
@@ -242,6 +296,7 @@ STATE_MACHINES: Dict[str, Iterable[str]] = {
     "two_factor": tuple(s.value for s in TwoFactorState),
     "account": tuple(s.value for s in AccountState),
     "role": ROLE_VALUES,
+    "form_role": tuple(r.value for r in FormRole),
     "single_use_link": tuple(s.value for s in LinkState),
     "login_session": tuple(s.value for s in SessionState),
 }

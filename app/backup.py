@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from .database import Base
 from .models import (
-    AuthSession, LoginAttempt, Nominee, PasswordResetToken, Project, ProjectShare,
+    AuditLog, AuthSession, LoginAttempt, Nominee, PasswordResetToken, Project, ProjectShare,
     RecoveryCode, SiteSettings, Submission, SurveyAnswer, SurveyQuestion,
     User, WatchedForm,
 )
@@ -40,6 +40,7 @@ EXPORT_VERSION = 2
 # reverse. (key in the JSON, model)
 BACKUP_MODELS = [
     ("users", User),
+    ("audit_log", AuditLog),
     ("projects", Project),
     ("project_shares", ProjectShare),
     ("submissions", Submission),

@@ -9,7 +9,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import Cookie, Depends, HTTPException
+from fastapi import Cookie, Depends, HTTPException, Request
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session as DbSession
 
@@ -18,6 +18,7 @@ from .models import User, AuthSession, PasswordResetToken, LoginAttempt
 
 PBKDF2_ITERATIONS = 260_000
 SESSION_COOKIE_NAME = "session_token"
+ALLOWED_WHILE_PASSWORD_CHANGE_PENDING = {"/api/auth/me", "/api/auth/change-password", "/api/auth/logout"}
 SESSION_DURATION_DAYS = 14
 
 # Off by default so local http:// dev keeps working out of the box. Set
@@ -71,6 +72,7 @@ def destroy_all_sessions_for_user(db: DbSession, user_id: int, except_token: Opt
 
 
 def get_current_user(
+    request: Request,
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     db: DbSession = Depends(get_db),
 ) -> User:
@@ -86,6 +88,12 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Not logged in")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been disabled")
+    # An admin-issued temporary password must be replaced before anything else.
+    if user.must_change_password and request.url.path not in ALLOWED_WHILE_PASSWORD_CHANGE_PENDING:
+        raise HTTPException(
+            status_code=403, detail="Please choose a new password to continue",
+            headers={"X-Error-Code": "password_change_required"},
+        )
     return user
 
 

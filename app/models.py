@@ -37,6 +37,9 @@ class User(Base):
     # only a confirmed code flips totp_enabled on.
     totp_secret = Column(String, nullable=True)
     totp_enabled = Column(Boolean, nullable=False, default=False)
+    # Set when an admin hands out a temporary password: every request except
+    # "who am I", "change password" and "log out" is refused until it is changed.
+    must_change_password = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     projects = relationship("Project", back_populates="owner", cascade="all, delete-orphan")
@@ -115,9 +118,18 @@ class Submission(Base):
     # shared viewer can both update this, since it's collaborative review,
     # not a form-management action.
     status = Column(String, nullable=False, default="new")
+    # Who last moved it out of "new", and when — accountability for shared
+    # review. Null for responses reviewed before this was tracked.
+    reviewed_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="submissions")
+    reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
+
+    @property
+    def reviewed_by_name(self):
+        return self.reviewed_by.name if self.reviewed_by else None
     # Only populated when this submission includes a nomination. One
     # submission can name several people, each with their own role — e.g.
     # nominating both a cashier and a shift lead in the same nomination.
@@ -209,6 +221,9 @@ class ProjectShare(Base):
     id = Column(Integer, primary_key=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # viewer | reviewer | editor — see states.FormRole. Rows from before
+    # roles existed pick up "reviewer" (what shared people could already do).
+    role = Column(String, nullable=False, default="reviewer")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="shares")
@@ -287,6 +302,17 @@ class SiteSettings(Base):
     # Set automatically by backup_db.py and by the manual export endpoint —
     # not user-editable directly.
     last_backup_at = Column(DateTime, nullable=True)
+    # Built-in scheduled backups (Site Settings -> Backups) — no cron needed.
+    backup_enabled = Column(Boolean, nullable=False, default=False)
+    backup_hour = Column(Integer, nullable=False, default=2)      # 0-23, server's local time
+    backup_keep = Column(Integer, nullable=False, default=14)     # how many files to keep
+    backup_dir = Column(String, nullable=True)                    # where on this machine (default: backups/)
+    backup_copy_dir = Column(String, nullable=True)               # optional second folder: USB stick / NAS
+    backup_rclone = Column(String, nullable=True)                 # optional cloud remote, e.g. gdrive:vsb
+    backup_rsync = Column(String, nullable=True)                  # optional SSH target, e.g. me@host:/path
+    backup_last_ok_at = Column(DateTime, nullable=True)
+    backup_last_attempt_at = Column(DateTime, nullable=True)
+    backup_last_error = Column(String, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -317,3 +343,19 @@ class LoginAttempt(Base):
     failures = Column(Integer, nullable=False, default=0)
     locked_until = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class AuditLog(Base):
+    """Append-only record of who did what — role changes, deletions, password
+    resets, transfers, restores. Names are copied in at write time so the
+    entry still reads correctly after an account is deleted."""
+    __tablename__ = "audit_log"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    actor_name = Column(String, nullable=True)
+    action = Column(String, nullable=False, index=True)
+    target_type = Column(String, nullable=True)   # "form" | "user" | "response" | "backup"
+    target_id = Column(Integer, nullable=True)
+    detail = Column(String, nullable=True)        # short, human-readable

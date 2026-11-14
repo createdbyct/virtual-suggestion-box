@@ -207,6 +207,14 @@ migrates the copy in place, exactly as above.
 
 ## Scheduled automatic backups
 
+**Easiest: no cron needed.** Sign in as superadmin -> Site Settings -> Backups ->
+*Automatic daily backup*. Turn it on, pick a time and how many to keep, and
+(recommended) fill in one off-Pi destination: a USB/network folder, rclone cloud
+storage, or an rsync/SSH target. "Back up now" tests your settings immediately,
+and failures show up right on that screen. The app runs the schedule itself
+(it needs to be running at the scheduled time; if the Pi was off, it backs up as
+soon as it's back). The cron method below still works if you prefer it.
+
 The manual export button protects you when you remember to click it
 before an update. This protects you the rest of the time — an SD card
 can fail on its own schedule, not just around your deploys.
@@ -229,9 +237,36 @@ Add this line (adjust the path if your username/folder differs):
 0 2 * * * cd /home/yourusername/virtual-suggestion-box && venv/bin/python3 backup_db.py --keep 14 >> /home/yourusername/virtual-suggestion-box/backup.log 2>&1
 ```
 
-Worth doing eventually: copy `backups/` somewhere off the Pi entirely
-(another machine, cloud storage) — a backup that lives on the same SD
-card it's protecting against doesn't help if that card fails outright.
+### Keep a copy off the Pi (recommended)
+
+A backup that lives on the same SD card it protects doesn't help if that
+card dies. `backup_db.py` can send each backup somewhere else as part of
+the same run — pick whichever you have (you can combine them):
+
+```bash
+# a USB stick or NAS that's mounted on the Pi
+venv/bin/python3 backup_db.py --keep 14 --copy-to /media/usb/vsb-backups
+
+# cloud storage via rclone (Google Drive, Dropbox, S3...). One-time setup: `rclone config`
+venv/bin/python3 backup_db.py --keep 14 --rclone gdrive:vsb-backups
+
+# another computer over SSH (set up a key first so it doesn't ask for a password)
+venv/bin/python3 backup_db.py --keep 14 --rsync you@other-machine:/backups/vsb
+```
+
+Cron line with an off-Pi copy:
+```
+0 2 * * * cd /home/yourusername/virtual-suggestion-box && venv/bin/python3 backup_db.py --keep 14 --copy-to /media/usb/vsb-backups >> backup.log 2>&1
+```
+
+If an off-Pi copy fails (stick unplugged, cloud login expired) the script
+still writes the local backup, prints `FAILED ...` to the log, and exits
+non-zero so cron can tell you. Check `backup.log` now and then. The files
+contain password hashes, so they're saved readable only by you — keep the
+destination private.
+
+To restore: Site Settings -> Backups -> Import (superadmin), using any of the
+saved JSON files.
 
 ## New-submission and new-form notifications
 
