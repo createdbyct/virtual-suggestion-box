@@ -5,7 +5,11 @@ import json
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, computed_field, field_validator, model_validator
+
+from .states import (
+    form_accepts_responses, form_state, next_submission_statuses, parse_submission_status,
+)
 
 
 class NomineeIn(BaseModel):
@@ -299,6 +303,12 @@ class SubmissionOut(BaseModel):
     status: str
     created_at: datetime
 
+    @computed_field
+    @property
+    def next_statuses(self) -> List[str]:
+        """Legal next review states — lets the UI/agents offer only valid moves."""
+        return next_submission_statuses(self.status)
+
     class Config:
         from_attributes = True
 
@@ -309,11 +319,8 @@ class SubmissionStatusUpdate(BaseModel):
     @field_validator("status")
     @classmethod
     def status_valid(cls, v: str) -> str:
-        if v == "done":  # retired status — older clients map to reviewed
-            return "reviewed"
-        if v not in ("new", "reviewed"):
-            raise ValueError("status must be 'new' or 'reviewed'")
-        return v
+        # Also maps the retired "done" onto "reviewed" for older clients.
+        return parse_submission_status(v).value
 
 
 class SubmissionListOut(BaseModel):
@@ -470,15 +477,28 @@ class ForgotPasswordIn(BaseModel):
 
 
 class ForgotPasswordOut(BaseModel):
-    """delivered_via is 'email' when SMTP is configured and the send
-    succeeded, otherwise 'on_screen' — reset_url is only populated in the
-    latter case. See mailer.py for the fallback logic."""
+    """delivered_via is 'email' when a reset link was (or, for an unknown
+    account, would have been) emailed, or 'admin' when the site has no
+    working email and an admin must reset the password. reset_url is kept
+    for old clients but is never populated — links are never shown on screen."""
     delivered_via: str
     reset_url: Optional[str] = None
     expires_at: datetime
 
 
 class ResetPasswordIn(BaseModel):
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("password must be at least 8 characters")
+        return v
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
     new_password: str
 
     @field_validator("new_password")
@@ -642,6 +662,17 @@ class ProjectOut(BaseModel):
     new_submission_count: int = 0
     is_owner: bool = True
     owner_name: Optional[str] = None  # populated only for forms shared with you
+
+    @computed_field
+    @property
+    def state(self) -> str:
+        """'active' | 'archived' | 'expired' — see app/states.py."""
+        return form_state(self.is_archived, self.expires_at).value
+
+    @computed_field
+    @property
+    def accepting_responses(self) -> bool:
+        return form_accepts_responses(self.expires_at)
 
     class Config:
         from_attributes = True

@@ -14,7 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..auth import (
-    hash_password, verify_password, create_session, destroy_session,
+    prune_expired_auth_rows, hash_password, verify_password, create_session, destroy_session,
     destroy_all_sessions_for_user, get_current_user, find_user_by_identifier,
     SESSION_COOKIE_NAME, SESSION_COOKIE_SECURE,
 )
@@ -26,10 +26,14 @@ from ..rate_limit import (
     clear_login_failures, get_client_ip,
 )
 from ..schemas import (
+    ChangePasswordIn,
     RegisterIn, LoginIn, UserOut, UserSelfUpdateIn,
     TotpSetupOut, TotpConfirmIn, TotpConfirmOut, TotpDisableIn, RecoveryCodesOut,
     ForgotPasswordIn, ForgotPasswordOut, ResetPasswordIn, ResetPasswordTokenInfo,
     SessionOut,
+)
+from ..states import (
+    ErrorCode, LinkState, TwoFactorState, error_headers, reset_link_state, two_factor_allows, two_factor_state,
 )
 from ..totp import generate_totp_secret, verify_totp_code, build_otpauth_url, generate_recovery_codes
 
@@ -81,20 +85,24 @@ def login(payload: LoginIn, response: Response, request: Request, db: Session = 
     remaining = is_locked_out(lockout_key)
     if remaining is not None:
         minutes = max(1, int(remaining // 60) + 1)
-        raise HTTPException(status_code=429, detail=f"Too many failed attempts — try again in about {minutes} minute{'s' if minutes != 1 else ''}")
+        raise HTTPException(status_code=429, detail=f"Too many failed attempts — try again in about {minutes} minute{'s' if minutes != 1 else ''}",
+                            headers=error_headers(ErrorCode.LOCKED_OUT))
 
     user = find_user_by_identifier(payload.identifier, db)
     if not user or not verify_password(payload.password, user.password_hash):
         record_login_failure(lockout_key)
-        raise HTTPException(status_code=401, detail="Incorrect email/username or password")
+        raise HTTPException(status_code=401, detail="Incorrect email/username or password",
+                            headers=error_headers(ErrorCode.BAD_CREDENTIALS))
     if not user.is_active:
-        raise HTTPException(status_code=403, detail="This account has been disabled")
+        raise HTTPException(status_code=403, detail="This account has been disabled",
+                            headers=error_headers(ErrorCode.ACCOUNT_DISABLED))
 
     if user.totp_enabled:
         if not payload.totp_code:
             # Distinct detail text the frontend keys off of to show the
             # code field, rather than a generic error.
-            raise HTTPException(status_code=401, detail="2FA code required")
+            raise HTTPException(status_code=401, detail="2FA code required",
+                                headers=error_headers(ErrorCode.TWO_FACTOR_REQUIRED))
 
         if not verify_totp_code(user.totp_secret, payload.totp_code):
             # Fall back to checking recovery codes before failing outright.
@@ -108,9 +116,11 @@ def login(payload: LoginIn, response: Response, request: Request, db: Session = 
                     break
             if not used_recovery:
                 record_login_failure(lockout_key)
-                raise HTTPException(status_code=401, detail="Incorrect 2FA code")
+                raise HTTPException(status_code=401, detail="Incorrect 2FA code",
+                                    headers=error_headers(ErrorCode.TWO_FACTOR_REJECTED))
 
     clear_login_failures(lockout_key)
+    prune_expired_auth_rows(db)  # housekeeping: stale sessions / reset links
     token, expires_at = create_session(db, user, ip, request.headers.get("user-agent"))
     _set_session_cookie(response, token, expires_at)
     return user
@@ -154,48 +164,54 @@ def update_me(payload: UserSelfUpdateIn, user: User = Depends(get_current_user),
 
 @router.post("/forgot-password", response_model=ForgotPasswordOut)
 def forgot_password(payload: ForgotPasswordIn, request: Request, db: Session = Depends(get_db)):
+    """Emails a reset link when the site has email set up. Without email,
+    nothing is generated or shown on screen — a link on screen would let
+    anyone who knows a username take over that account — so the person is
+    told to ask an admin, who resets it from the Users tab (and the person
+    can then change it themselves in Settings). The response never depends
+    on whether the account exists."""
     ip = get_client_ip(request)
     if not check_rate_limit(f"forgot:{ip}", max_hits=5, window_seconds=600):
         raise HTTPException(status_code=429, detail="Too many requests — try again shortly")
 
+    expires_at = datetime.utcnow() + timedelta(hours=RESET_TOKEN_VALID_HOURS)
+    smtp_config = get_smtp_config(db)
+    if not is_smtp_configured(smtp_config):
+        return ForgotPasswordOut(delivered_via="admin", expires_at=expires_at)
+
     user = find_user_by_identifier(payload.identifier, db)
     if not user:
-        raise HTTPException(status_code=404, detail="No account found with that email or username")
+        return ForgotPasswordOut(delivered_via="email", expires_at=expires_at)  # same answer as a real account
 
     token = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(hours=RESET_TOKEN_VALID_HOURS)
     db.add(PasswordResetToken(token=token, user_id=user.id, expires_at=expires_at))
     db.commit()
 
-    reset_path = f"/reset-password/{token}"
-    smtp_config = get_smtp_config(db)
-
-    if is_smtp_configured(smtp_config):
-        full_url = build_public_url(reset_path, request)
-        sent = send_email(
-            smtp_config,
-            user.email,
-            "Reset your password — Virtual Suggestion Box",
-            f"Hi {user.name},\n\n"
-            f"Someone (hopefully you) requested a password reset for your account.\n\n"
-            f"Reset your password here:\n{full_url}\n\n"
-            f"This link expires in {RESET_TOKEN_VALID_HOURS} hour and can only be used once.\n\n"
-            f"If you didn't request this, you can safely ignore this email — "
-            f"your password hasn't been changed.",
-        )
-        if sent:
-            return ForgotPasswordOut(delivered_via="email", expires_at=expires_at)
-        # SMTP is configured but the send actually failed (bad creds, host
-        # down, etc.) — degrade to on-screen rather than leaving the
-        # person with no way to reset at all.
-
-    return ForgotPasswordOut(delivered_via="on_screen", reset_url=reset_path, expires_at=expires_at)
+    full_url = build_public_url(f"/reset-password/{token}", request)
+    sent = send_email(
+        smtp_config,
+        user.email,
+        "Reset your password — Virtual Suggestion Box",
+        f"Hi {user.name},\n\n"
+        f"Someone (hopefully you) requested a password reset for your account.\n\n"
+        f"Reset your password here:\n{full_url}\n\n"
+        f"This link expires in {RESET_TOKEN_VALID_HOURS} hour and can only be used once.\n\n"
+        f"If you didn't request this, you can safely ignore this email — "
+        f"your password hasn't been changed.",
+    )
+    if not sent:
+        # Email is configured but broken. Don't leave a live link nobody got.
+        db.query(PasswordResetToken).filter(PasswordResetToken.token == token).delete()
+        db.commit()
+        return ForgotPasswordOut(delivered_via="admin", expires_at=expires_at)
+    return ForgotPasswordOut(delivered_via="email", expires_at=expires_at)
 
 
 def _get_valid_reset_token(token: str, db: Session) -> PasswordResetToken:
     entry = db.query(PasswordResetToken).filter(PasswordResetToken.token == token).first()
-    if not entry or entry.used or entry.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=404, detail="This reset link is invalid or has expired")
+    if reset_link_state(entry) is not LinkState.VALID:
+        raise HTTPException(status_code=404, detail="This reset link is invalid or has expired",
+                            headers=error_headers(ErrorCode.LINK_INVALID))
     return entry
 
 
@@ -218,6 +234,11 @@ def reset_password(token: str, payload: ResetPasswordIn, db: Session = Depends(g
 
     user.password_hash = hash_password(payload.new_password)
     entry.used = True
+    # A reset invalidates every other outstanding link for this account too,
+    # so an older emailed link can't be used to change the password again.
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id, PasswordResetToken.used == False  # noqa: E712
+    ).update({"used": True})
     destroy_all_sessions_for_user(db, user.id)  # force re-login everywhere, including any active attacker session
     db.commit()
     return {"status": "password reset"}
@@ -229,6 +250,10 @@ def reset_password(token: str, payload: ResetPasswordIn, db: Session = Depends(g
 def setup_2fa(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Generates a new secret and returns it plus a QR-ready otpauth:// URL.
     Not enabled yet — a confirmed code via /2fa/confirm turns it on."""
+    if not two_factor_allows("start_setup", two_factor_state(user.totp_secret, user.totp_enabled)):
+        # Used to silently switch 2FA off. Turning it off needs the password.
+        raise HTTPException(status_code=409, detail="2FA is already on — disable it first if you want to set it up again",
+                            headers=error_headers(ErrorCode.TWO_FACTOR_ALREADY_ON))
     secret = generate_totp_secret()
     user.totp_secret = secret
     user.totp_enabled = False
@@ -287,6 +312,31 @@ def regenerate_recovery_codes(user: User = Depends(get_current_user), db: Sessio
 def count_remaining_recovery_codes(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     count = db.query(RecoveryCode).filter(RecoveryCode.user_id == user.id, RecoveryCode.used == False).count()  # noqa: E712
     return {"remaining": count}
+
+
+# ---- Change password (signed in) ----
+
+@router.post("/change-password")
+def change_password(
+    payload: ChangePasswordIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+):
+    """Needs the current password (a stolen session alone can't lock the
+    owner out). Keeps this device signed in; every other device is logged
+    out. Wrong guesses are rate limited per account."""
+    if not check_rate_limit(f"chpw:{user.id}", max_hits=5, window_seconds=600):
+        raise HTTPException(status_code=429, detail="Too many attempts — try again in a few minutes")
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Your current password is incorrect",
+                            headers=error_headers(ErrorCode.WRONG_PASSWORD))
+    if payload.current_password == payload.new_password:
+        raise HTTPException(status_code=400, detail="Choose a password different from your current one")
+    user.password_hash = hash_password(payload.new_password)
+    db.commit()
+    destroy_all_sessions_for_user(db, user.id, except_token=session_token)
+    return {"status": "changed"}
 
 
 # ---- Sessions ----

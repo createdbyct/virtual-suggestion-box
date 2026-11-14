@@ -30,6 +30,8 @@ from ..analytics import build_survey_analytics
 from ..survey_templates import SURVEY_TEMPLATES
 from ..webhook import send_webhook_notification, build_new_form_message
 
+from ..states import can_transition_submission
+
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 SHORT_CODE_CHARS = string.ascii_lowercase + string.digits
@@ -320,6 +322,8 @@ def update_submission_status(
     submission = db.query(Submission).filter(Submission.id == submission_id, Submission.project_id == project.id).first()
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
+    if not can_transition_submission(submission.status, payload.status):
+        raise HTTPException(status_code=409, detail=f"Can't move a '{submission.status}' response to '{payload.status}'")
     submission.status = payload.status
     db.commit()
     db.refresh(submission)

@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from .database import Base
 from .models import (
-    AuthSession, Nominee, PasswordResetToken, Project, ProjectShare,
+    AuthSession, LoginAttempt, Nominee, PasswordResetToken, Project, ProjectShare,
     RecoveryCode, SiteSettings, Submission, SurveyAnswer, SurveyQuestion,
     User, WatchedForm,
 )
@@ -55,7 +55,7 @@ SINGLETON_MODELS = [("site_settings", SiteSettings)]
 
 # Deliberately not backed up: short-lived by design, and forcing a fresh
 # login after a restore is expected, not a bug.
-EXCLUDED_MODELS = [AuthSession, PasswordResetToken]
+EXCLUDED_MODELS = [AuthSession, PasswordResetToken, LoginAttempt]
 
 
 def _iso(dt):

@@ -77,7 +77,8 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    if (data.detail === '2FA code required') {
+    // Prefer the stable machine-readable code; the text match is a fallback for older servers.
+    if (res.headers.get('X-Error-Code') === '2fa_required' || data.detail === '2FA code required') {
       needsTotp = true;
       document.getElementById('totp-field').classList.remove('hidden');
       document.getElementById('totp_code').focus();

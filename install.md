@@ -83,7 +83,7 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-**About the SMTP lines:** these are optional — either configure email here as env vars, or skip them entirely and set it up later through Site Settings → Email (SMTP) once you're logged in as a superadmin (that panel takes priority over these env vars if both are set). Either way, skipping both just falls back to showing the password-reset link on-screen instead of emailing it — still fully functional, just not emailed.
+**About the SMTP lines:** these are optional — either configure email here as env vars, or skip them entirely and set it up later through Site Settings → Email (SMTP) once you're logged in as a superadmin (that panel takes priority over these env vars if both are set). Either way, skipping both is fine: without email, the forgot-password page tells people to ask an admin, who resets their password from the Users tab (people can then change it themselves under Your account → Password).
 
 If using Gmail: you can't use your normal password — Google requires an **App Password** instead. Go to your Google Account → Security → 2-Step Verification (must be enabled) → App Passwords → generate one for "Mail." Use that 16-character password as `SMTP_PASSWORD` (or in the Site Settings panel), not your real Gmail password.
 

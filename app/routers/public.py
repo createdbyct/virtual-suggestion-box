@@ -20,6 +20,8 @@ from ..schemas import (
 from ..analytics import build_survey_analytics
 from ..webhook import send_webhook_notification, build_submission_message
 
+from ..states import ErrorCode, LinkState, error_headers, form_accepts_responses, view_link_state
+
 router = APIRouter(prefix="/api/vb", tags=["public"])
 
 # Hardcoded per project preference — not a settings-UI field.
@@ -63,8 +65,9 @@ def submit(slug: str, payload: SubmissionCreate, request: Request, background_ta
 
     project = _get_project_or_404(slug, db)
 
-    if project.expires_at and datetime.utcnow() > project.expires_at:
-        raise HTTPException(status_code=403, detail="This form is no longer accepting submissions")
+    if not form_accepts_responses(project.expires_at):
+        raise HTTPException(status_code=403, detail="This form is no longer accepting submissions",
+                            headers=error_headers(ErrorCode.FORM_CLOSED))
 
     # Every form always accepts anonymous submissions. Whether this one
     # counts as anonymous is just whatever the submitter chose to fill in.
@@ -194,8 +197,9 @@ def _get_viewable_submission_or_404(token: str, db: Session) -> Submission:
     submission = db.query(Submission).filter(Submission.edit_token == token).first()
     if not submission:
         raise HTTPException(status_code=404, detail="Link not found")
-    if datetime.utcnow() > submission.edit_expires_at:
-        raise HTTPException(status_code=410, detail="This link has expired")
+    if view_link_state(submission.edit_expires_at) is LinkState.EXPIRED:
+        raise HTTPException(status_code=410, detail="This link has expired",
+                            headers=error_headers(ErrorCode.LINK_EXPIRED))
     return submission
 
 

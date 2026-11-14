@@ -128,7 +128,7 @@ class Submission(Base):
     survey_answers = relationship("SurveyAnswer", back_populates="submission", cascade="all, delete-orphan")
 
     __table_args__ = (
-        CheckConstraint("status IN ('new', 'reviewed')", name="ck_submission_status"),
+        CheckConstraint("status IN ('new', 'reviewed')", name="ck_submission_status"),  # mirror of states.SubmissionStatus
     )
 
 
@@ -304,3 +304,16 @@ class WatchedForm(Base):
     notify_email = Column(Boolean, nullable=False, default=True)
     notify_webhook = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LoginAttempt(Base):
+    """Failed-login counter and lockout, kept in the database (not memory) so
+    a service restart doesn't hand an attacker a fresh set of guesses.
+    One row per "ip:identifier" key; rows are deleted on a successful login
+    and pruned once stale. Never exported in backups."""
+    __tablename__ = "login_attempts"
+
+    key = Column(String, primary_key=True)
+    failures = Column(Integer, nullable=False, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)

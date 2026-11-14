@@ -48,7 +48,7 @@ Implementation note: TOTP (RFC 6238) is implemented directly with the standard l
 
 **If `SMTP_HOST`/`SMTP_USERNAME`/`SMTP_PASSWORD` are set** (see `install.md`), the reset link is actually emailed — no reset link is ever shown on-screen or returned by the API in this mode.
 
-**If SMTP isn't configured**, the app falls back to handing the link back directly on-screen instead — functionally the same as clicking a reset link, just without the email round-trip. Treat that link like a password: anyone with it can reset the account. This is also what happens automatically if SMTP is configured but the actual send fails for some reason (bad credentials, host unreachable) — nobody gets locked out of resetting just because email delivery broke.
+**If SMTP isn't configured** (or the send fails), no link is created or shown anywhere — the forgot-password page tells the person to ask an admin. An admin resets it from the Users tab (a temporary password is shown once), and the person then changes it to their own under Your account → Password. Showing links on screen was removed because anyone who knew a username could have used it to take over that account.
 
 Submission view links and new-submission notifications are intentionally *not* emailed — only password reset uses this. Implementation is stdlib `smtplib` only, no extra package to install.
 

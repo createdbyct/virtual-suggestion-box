@@ -14,7 +14,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session as DbSession
 
 from .database import get_db
-from .models import User, AuthSession
+from .models import User, AuthSession, PasswordResetToken, LoginAttempt
 
 PBKDF2_ITERATIONS = 260_000
 SESSION_COOKIE_NAME = "session_token"
@@ -87,6 +87,21 @@ def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been disabled")
     return user
+
+
+def prune_expired_auth_rows(db: DbSession) -> None:
+    """Delete sessions and reset links that can never be used again, so the
+    tables don't grow forever. Cheap, idempotent, and safe to call often."""
+    now = datetime.utcnow()
+    db.query(AuthSession).filter(AuthSession.expires_at < now).delete()
+    db.query(PasswordResetToken).filter(
+        (PasswordResetToken.expires_at < now - timedelta(days=1)) | (PasswordResetToken.used == True)  # noqa: E712
+    ).delete(synchronize_session=False)
+    db.query(LoginAttempt).filter(
+        (LoginAttempt.locked_until < now)
+        | ((LoginAttempt.locked_until.is_(None)) & (LoginAttempt.updated_at < now - timedelta(hours=1)))
+    ).delete(synchronize_session=False)
+    db.commit()
 
 
 def find_user_by_identifier(identifier: str, db: DbSession) -> Optional[User]:

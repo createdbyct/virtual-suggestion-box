@@ -9,6 +9,7 @@ a shared store (Redis, the DB itself, etc.) since each process would
 otherwise track its own separate counts.
 """
 import time
+from datetime import datetime, timedelta
 from collections import defaultdict
 from threading import Lock
 from typing import Optional
@@ -18,8 +19,6 @@ _lock = Lock()
 # key -> list of timestamps (seconds) within the current window
 _hits: dict[str, list[float]] = defaultdict(list)
 
-# key -> (failure_count, locked_until_timestamp_or_None)
-_login_failures: dict = {}  # key -> (failure_count, locked_until_timestamp_or_None)
 
 
 def _prune(key: str, window_seconds: float) -> None:
@@ -39,39 +38,71 @@ def check_rate_limit(key: str, max_hits: int, window_seconds: float) -> bool:
         return True
 
 
-# ---- Login lockout ----
+# ---- Login lockout (persisted in the database) ----
+#
+# Stored in the login_attempts table so a restart can't be used to reset an
+# attacker's guess count. Same behaviour as before: 5 failures lock that
+# IP + identifier for 15 minutes. A counter that has gone quiet for longer
+# than the lockout window starts over.
 
 LOGIN_MAX_FAILURES = 5
 LOGIN_LOCKOUT_SECONDS = 15 * 60
 
 
+def _attempts_session():
+    from .database import SessionLocal
+    return SessionLocal()
+
+
 def is_locked_out(identifier_key: str) -> Optional[float]:
     """Returns seconds remaining if locked out, else None."""
+    from .models import LoginAttempt
     with _lock:
-        entry = _login_failures.get(identifier_key)
-        if not entry:
-            return None
-        _, locked_until = entry
-        if locked_until is None:
-            return None
-        remaining = locked_until - time.time()
-        if remaining <= 0:
-            del _login_failures[identifier_key]
-            return None
-        return remaining
+        db = _attempts_session()
+        try:
+            row = db.get(LoginAttempt, identifier_key)
+            if not row or row.locked_until is None:
+                return None
+            remaining = (row.locked_until - datetime.utcnow()).total_seconds()
+            if remaining <= 0:
+                db.delete(row)
+                db.commit()
+                return None
+            return remaining
+        finally:
+            db.close()
 
 
 def record_login_failure(identifier_key: str) -> None:
+    from .models import LoginAttempt
     with _lock:
-        count, _ = _login_failures.get(identifier_key, (0, None))
-        count += 1
-        locked_until = time.time() + LOGIN_LOCKOUT_SECONDS if count >= LOGIN_MAX_FAILURES else None
-        _login_failures[identifier_key] = (count, locked_until)
+        db = _attempts_session()
+        try:
+            now = datetime.utcnow()
+            row = db.get(LoginAttempt, identifier_key)
+            if row and (now - row.updated_at).total_seconds() > LOGIN_LOCKOUT_SECONDS and row.locked_until is None:
+                row.failures = 0  # quiet for a full window — start over
+            if not row:
+                row = LoginAttempt(key=identifier_key, failures=0)
+                db.add(row)
+            row.failures = (row.failures or 0) + 1
+            row.updated_at = now
+            if row.failures >= LOGIN_MAX_FAILURES:
+                row.locked_until = now + timedelta(seconds=LOGIN_LOCKOUT_SECONDS)
+            db.commit()
+        finally:
+            db.close()
 
 
 def clear_login_failures(identifier_key: str) -> None:
+    from .models import LoginAttempt
     with _lock:
-        _login_failures.pop(identifier_key, None)
+        db = _attempts_session()
+        try:
+            db.query(LoginAttempt).filter(LoginAttempt.key == identifier_key).delete()
+            db.commit()
+        finally:
+            db.close()
 
 
 def get_client_ip(request) -> str:

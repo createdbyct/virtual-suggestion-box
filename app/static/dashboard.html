@@ -236,6 +236,33 @@ function renderAccountView() {
       </form>
     </div>
 
+    <p class="section-title">Password</p>
+    <div class="project-row">
+      <div class="project-row-top">
+        <div>
+          <div class="project-row-title">Password</div>
+          <div class="project-row-meta">Changing it signs you out of every other device.</div>
+        </div>
+        <div class="project-row-actions">
+          <button class="link-btn" id="change-pw-btn" aria-expanded="false">Change password</button>
+        </div>
+      </div>
+      <form class="optional-fields hidden" id="change-pw-form" autocomplete="off">
+        <label for="cpw-current">Current password</label>
+        <input type="password" id="cpw-current" autocomplete="current-password" required>
+
+        <label for="cpw-new">New password <span class="hint">(at least 8 characters)</span></label>
+        <input type="password" id="cpw-new" autocomplete="new-password" minlength="8" required>
+
+        <label for="cpw-confirm">Confirm new password</label>
+        <input type="password" id="cpw-confirm" autocomplete="new-password" minlength="8" required>
+
+        <p class="error-msg" id="cpw-error" role="alert"></p>
+        <p class="success-msg hidden" id="cpw-success" role="status"></p>
+        <button type="submit" id="cpw-submit" style="margin-top:14px;">Update password</button>
+      </form>
+    </div>
+
     <p class="section-title">Two-factor authentication</p>
     <div id="twofa-section"></div>
 
@@ -250,6 +277,13 @@ function renderAccountView() {
     document.getElementById('edit-name-form').classList.remove('hidden');
   });
   document.getElementById('edit-name-form').addEventListener('submit', handleSaveName);
+  document.getElementById('change-pw-btn').addEventListener('click', () => {
+    const form = document.getElementById('change-pw-form');
+    const open = form.classList.toggle('hidden') === false;
+    document.getElementById('change-pw-btn').setAttribute('aria-expanded', String(open));
+    if (open) document.getElementById('cpw-current').focus();
+  });
+  document.getElementById('change-pw-form').addEventListener('submit', handleChangePassword);
   document.getElementById('revoke-others-btn').addEventListener('click', handleRevokeOtherSessions);
   bindChrome();
   renderTwoFactorSection();
@@ -314,6 +348,48 @@ async function handleRevokeOtherSessions() {
 
 function truncate(str, maxLen) {
   return str.length > maxLen ? str.slice(0, maxLen - 1) + '…' : str;
+}
+
+async function handleChangePassword(e) {
+  e.preventDefault();
+  const errorEl = document.getElementById('cpw-error');
+  const okEl = document.getElementById('cpw-success');
+  const btn = document.getElementById('cpw-submit');
+  errorEl.classList.remove('visible');
+  okEl.classList.add('hidden');
+
+  const current_password = document.getElementById('cpw-current').value;
+  const new_password = document.getElementById('cpw-new').value;
+  const confirm = document.getElementById('cpw-confirm').value;
+  const fail = (msg) => { errorEl.textContent = msg; errorEl.classList.add('visible'); };
+
+  if (new_password.length < 8) return fail('Your new password needs at least 8 characters.');
+  if (new_password !== confirm) return fail("The new passwords don't match.");
+
+  btn.disabled = true;
+  btn.textContent = 'Updating…';
+  let res;
+  try {
+    res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password, new_password }),
+    });
+  } catch {
+    btn.disabled = false; btn.textContent = 'Update password';
+    return fail('Network error — please try again.');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Update password';
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const detail = Array.isArray(data.detail) ? (data.detail[0] && data.detail[0].msg) : data.detail;
+    return fail(detail || 'Could not change your password.');
+  }
+  document.getElementById('change-pw-form').reset();
+  okEl.textContent = 'Password updated. Other devices have been signed out.';
+  okEl.classList.remove('hidden');
+  loadAndRenderSessions();
 }
 
 async function handleSaveName(e) {
@@ -806,9 +882,9 @@ function renderMyProjectList() {
       : `<span class="badge badge-muted">Shared by ${escapeHtml(p.owner_name || 'someone')}</span>`;
     const groupBadge = p.group_name ? ` <span class="badge badge-muted">${escapeHtml(p.group_name)}</span>` : '';
     const templateBadge = p.is_template ? ` <span class="badge badge-dashed">Template</span>` : '';
-    const archivedBadge = p.is_archived ? ` <span class="badge badge-muted">Archived</span>` : '';
+    const archivedBadge = (p.is_archived ? ` <span class="badge badge-muted">Archived</span>` : '') + (p.state === 'expired' ? ` <span class="badge badge-muted">Closed</span>` : '');
     const tilt = [-6, 5, -3, 7][idx % 4];
-    const expiry = p.expires_at ? ` · closes ${new Date(p.expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '';
+    const expiry = p.expires_at ? ` · ${p.state === 'expired' ? 'closed' : 'closes'} ${new Date(p.expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '';
     const n = p.new_submission_count || 0;
     const reviewPill = n > 0
       ? `<span class="badge status-badge-new review-pill">${n} need${n === 1 ? 's' : ''} review</span>`
@@ -1840,7 +1916,7 @@ async function renderUserFormsView(userId, userName) {
 
   const renderRow = (p) => {
     const url = `${window.location.origin}/vb/${p.slug}`;
-    const archivedBadge = p.is_archived ? ` <span class="badge badge-muted">Archived</span>` : '';
+    const archivedBadge = (p.is_archived ? ` <span class="badge badge-muted">Archived</span>` : '') + (p.state === 'expired' ? ` <span class="badge badge-muted">Closed</span>` : '');
     const needsReviewBadge = p.new_submission_count > 0
       ? ` <span class="badge status-badge-new">${p.new_submission_count} need${p.new_submission_count === 1 ? 's' : ''} review</span>`
       : '';
